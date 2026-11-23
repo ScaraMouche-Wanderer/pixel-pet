@@ -6,9 +6,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtCore import Qt, QPoint, QRect
+from PySide6.QtCore import QEvent, Qt, QPoint, QRect
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QPushButton, QSystemTrayIcon, QWidget
 from animals import ACTIVITIES, EXTRA_ANIMATIONS, FLYERS, Outing
 from bubbles import bubble_position, fit_text, theme_for
 from companion import voice_for
@@ -81,14 +81,114 @@ class PetTests(unittest.TestCase):
             point = c + QPoint(round(math.sin(a) * 150), round(-math.cos(a) * 150))
             self.assertEqual(p.frame_at(100.5, point), (9 + index // 8, index % 8))
 
-    def test_click_wave_and_double_click_jump(self):
+    def test_click_opens_compact_menu_and_show_menu_reuses_a_standalone_window(self):
         p = self.pet
         QTest.mouseClick(p, Qt.LeftButton, pos=QPoint(60, 60))
         QTest.qWait(QApplication.doubleClickInterval() + 50)
-        self.assertEqual(p.mode, 'waving')
+        quick = p.quick_menu
+        self.assertTrue(quick.isVisible())
+        self.assertFalse(quick.isModal())
+        self.assertEqual(quick.windowType(), Qt.Dialog)
+        self.assertIsNone(QApplication.activePopupWidget())
+        self.assertEqual([quick.hide_button.text(), quick.show_button.text()], ['Hide', 'Show menu'])
+        QTest.mouseClick(quick.show_button, Qt.LeftButton)
+        self.app.processEvents()
+        self.assertFalse(quick.isVisible())
+        self.assertIsNone(QApplication.activePopupWidget())
+        controls = p.controls
+        self.assertTrue(controls.isVisible())
+        self.assertFalse(controls.isModal())
+        self.assertIsNone(controls.parent())
+        self.assertEqual(controls.windowType(), Qt.Dialog)
+        self.assertEqual(controls.minimumSize(), controls.maximumSize())
+        self.assertEqual(controls.tabs.count(), 3)
+        QTest.keyClick(controls, Qt.Key_Escape)
+        self.assertFalse(controls.isVisible())
+        self.assertTrue(p.isVisible())
+        p.open_controls()
+        self.assertIs(p.controls, controls)
+        self.assertTrue(controls.isVisible())
+        self.assertFalse(controls.isMaximized())
+
+    def test_menus_dismiss_when_focus_moves_to_another_window(self):
+        p = self.pet
+        other = QWidget()
+        try:
+            for name, open_menu in (('quick_menu', lambda: p.open_pet_menu(p.geometry().center())),
+                                    ('controls', p.open_controls)):
+                with self.subTest(menu=name):
+                    open_menu()
+                    QTest.qWait(25)
+                    menu = getattr(p, name)
+                    self.assertTrue(menu.isActiveWindow())
+                    other.show()
+                    other.activateWindow()
+                    QTest.qWait(25)
+                    self.assertTrue(other.isActiveWindow())
+                    self.assertFalse(menu.isVisible())
+                    open_menu()
+                    QTest.qWait(25)
+                    self.assertTrue(menu.isActiveWindow())
+                    menu.close()
+        finally:
+            other.close()
+
+    def test_controls_change_appearance_and_save_without_closing(self):
+        p = self.pet
+        p.open_controls()
+        page = p.controls.appearance
+        self.assertEqual(set(page.pet_buttons), set(PETS))
+        for button in (page.pet_buttons['eagle'], page.colour_buttons['pastel'],
+                       page.size_buttons[192], page.pace_buttons['zoomies']):
+            QTest.mouseClick(button, Qt.LeftButton)
+            self.assertTrue(button.isChecked())
+            self.assertTrue(p.controls.isVisible())
+        data = Settings(self.settings.path).data
+        self.assertEqual((data['pet'], data['style'], data['size'], data['play_pace']),
+                         ('eagle', 'pastel', 192, 'zoomies'))
+
+    def test_leaving_pet_cancels_a_pending_quick_menu(self):
+        p = self.pet
+        QTest.mouseClick(p, Qt.LeftButton, pos=QPoint(60, 60))
+        self.assertTrue(p.click_timer.isActive())
+        self.app.sendEvent(p, QEvent(QEvent.Leave))
+        self.assertFalse(p.click_timer.isActive())
+        self.assertIsNone(p.quick_menu)
+
+    def test_double_click_jumps_without_opening_a_menu(self):
+        p = self.pet
+        QTest.mouseClick(p, Qt.LeftButton, pos=QPoint(60, 60))
         QTest.mouseDClick(p, Qt.LeftButton, pos=QPoint(60, 60))
         self.assertEqual(p.mode, 'jumping')
         self.assertIsNone(p.drag_origin)
+        QTest.qWait(QApplication.doubleClickInterval() + 50)
+        self.assertIsNone(p.quick_menu)
+
+    def test_hide_stops_play_and_focus_can_finish_before_tray_restore(self):
+        p = self.pet
+        p.start_fireflies()
+        self.assertTrue(p.firefly.isVisible())
+        QTest.mouseClick(p, Qt.RightButton, pos=QPoint(60, 60))
+        quick = p.quick_menu
+        self.assertTrue(quick.isVisible())
+        QTest.mouseClick(quick.hide_button, Qt.LeftButton)
+        self.assertFalse(quick.isVisible())
+        self.assertFalse(any(widget.isVisible() for widget in (p, p.effects, p.ball, p.firefly, p.card)))
+        self.assertFalse(p.firefly.active)
+        self.assertEqual([action.text() for action in p.tray_menu.actions() if action.isVisible()],
+                         ['Show pet', 'Bring pet home', 'Quit'])
+
+        p.preview = False
+        p.companion.start_focus(15, now=time.time() - 901)
+        p.last_model_tick = 0
+        with patch('pet.subprocess.Popen'):
+            p.tick()
+        self.assertEqual(p.companion.data['focus_sessions'], 1)
+        self.assertFalse(p.isVisible())
+        self.assertFalse(p.effects.isVisible())
+        p.tray_clicked(QSystemTrayIcon.Trigger)
+        self.assertTrue(p.isVisible())
+        self.assertIn('Show menu', [action.text() for action in p.tray_menu.actions() if action.isVisible()])
 
     def test_pet_size_pause_and_settings_persist(self):
         p = self.pet
@@ -113,17 +213,18 @@ class PetTests(unittest.TestCase):
         visibility = [widget.isVisible() for widget in surfaces]
         self.assertTrue(p.testAttribute(Qt.WA_X11NetWmWindowTypeDesktop))
         self.assertTrue(all(widget.windowFlags() & Qt.WindowStaysOnBottomHint for widget in surfaces))
-        menu = p.menu()
-        option = next(action for action in menu.actions() if action.text() == 'Always on top')
+        p.open_controls()
+        option = p.controls.options.toggles['always_on_top']
         self.assertFalse(option.isChecked())
-        option.trigger()
+        option.click()
+        self.assertTrue(p.controls.isVisible())
         self.assertTrue(Settings(self.settings.path).data['always_on_top'])
         self.assertTrue(all(widget.windowFlags() & Qt.WindowStaysOnTopHint for widget in surfaces))
         self.assertFalse(any(widget.testAttribute(Qt.WA_X11NetWmWindowTypeDesktop) for widget in surfaces))
         self.assertEqual([widget.pos() for widget in surfaces], points)
         self.assertEqual([widget.isVisible() for widget in surfaces], visibility)
         self.assertTrue(p.firefly.active)
-        option.trigger()
+        option.click()
         self.assertFalse(Settings(self.settings.path).data['always_on_top'])
         self.assertTrue(p.testAttribute(Qt.WA_X11NetWmWindowTypeDesktop))
         self.assertFalse(p.card.testAttribute(Qt.WA_X11NetWmWindowTypeDesktop))
@@ -312,8 +413,8 @@ class PetTests(unittest.TestCase):
                 p.home()
                 screen = p.screen().availableGeometry()
                 origin = p.pos()
-                menu = p.menu()
-                next(action for action in menu.actions() if action.text() == 'Take flight').trigger()
+                p.open_controls()
+                p.controls.play.trick.click()
                 route = p.outing
                 self.assertEqual(route.activity, bird + '-flight')
                 frames = [route.sample(route.started + route.duration * i / 80) for i in range(81)]
@@ -393,6 +494,7 @@ class PetTests(unittest.TestCase):
         self.assertEqual(p.companion.data['xp'], 4)
         self.assertEqual(p.companion.data['pets'], 0)
         self.assertTrue(p.effects.particles)
+        self.assertIsNone(p.quick_menu)
 
     def test_treat_pet_name_and_bond_survive_restart(self):
         p = self.pet

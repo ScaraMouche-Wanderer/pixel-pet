@@ -1,6 +1,6 @@
 # Pixel Pet
 
-Pixel Pet is a Linux desktop companion with animated animals, toys, a care card, and a focus timer. It sits behind app windows by default. The right-click menu includes an **Always on top** switch.
+Pixel Pet is a Linux desktop companion with animated animals, toys, a care card, and a focus timer. It sits behind app windows by default. Turn on **Always on top** under **Settings** to keep the pet visible above them.
 
 | Showtime | Take flight |
 | --- | --- |
@@ -19,16 +19,21 @@ python -m pip install -r requirements.txt
 ./launch.sh
 ```
 
-Pixel Pet keeps its settings and friendship progress in `~/.config/pixel-pet/settings.json`, or under `XDG_CONFIG_HOME` when set. **Start at login** in the right-click menu is opt-in.
+Pixel Pet keeps its settings and friendship progress in `~/.config/pixel-pet/settings.json`, or under `XDG_CONFIG_HOME` when set. **Start at login** in **Settings** is opt-in.
+
+## Controls
+
+- **Click** or **right-click** the pet to see **Hide** and **Show menu**. Choose **Hide** to put the pet away. Click the tray icon or run the launcher again to bring it back.
+- **Show menu** opens a compact, zoo-themed controls window with a live habitat preview. Press **Esc** or switch to another window to dismiss either menu. The tray menu also offers **Show menu**.
+- **Appearance** lets you pick Cosmic Cat, Classic Cat, Monkey, Eagle, or Dusk Owl. Set **Colour**, **Size**, and **Speed** in the same tab. The bundled pets offer Original, Pastel, and Moonlight palettes.
+- **Hold** to cuddle, **double-click** to jump, **drag** to reposition, or **middle-click** to open the care card. For a head pat, use **Pet** in the care card.
 
 ## Play
 
-- **Click** to pet, **hold** to cuddle, **double-click** to jump, and **drag** to reposition.
-- **Middle-click** to open the care card, or **right-click** for the menu. Change your animal under **Choose pet** and its palette under **Style**.
 - The cats prowl, stretch, groom, and chase yarn. Monkey climbs, swings, and cartwheels. **Eagle** and **Dusk Owl** use different wingbeats and return to perch after a flight.
-- Use **Showtime** for a signature move, **Take flight** for either bird, or **Animate** for specific poses. Turn **Autonomous play** off to control when they move.
-- Try **Firefly hunt** for a short desktop game or **Focus together** for a 15-, 25-, or 50-minute timer. Linux systems with `notify-send` also show a notification at the end of a focus session.
-- **Play pace** sets the speed, and **Motion effects** controls the dust, leaves, and feather trails. Trails and speech bubbles pass input through to the apps underneath.
+- In **Play**, use **Showtime** for a signature move, **Take flight** for either bird, or **Animate** for specific poses. Turn **Autonomous play** off in **Settings** to control when they move.
+- In **Play**, try **Firefly hunt** for a short desktop game or **Focus together** for a 15-, 25-, or 50-minute timer. Linux systems with `notify-send` also show a notification at the end of a focus session.
+- **Motion effects** in **Settings** controls dust, leaves, and feather trails. Trails and speech bubbles pass input through to the apps underneath.
 
 ## Source and artwork
 

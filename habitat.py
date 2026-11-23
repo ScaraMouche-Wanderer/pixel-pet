@@ -1,5 +1,16 @@
 """Screen bounds for nearby pet activity."""
-from PySide6.QtCore import QRect
+from PySide6.QtCore import QPoint, QRect
+
+
+def top_left_bounds(widget, screen):
+    """Return the inclusive range where the whole widget fits on screen."""
+    left, top = screen.left(), screen.top()
+    return left, top, max(left, screen.right() - widget.width() + 1), max(top, screen.bottom() - widget.height() + 1)
+
+
+def bounded_position(point, bounds):
+    left, top, right, bottom = bounds
+    return QPoint(max(left, min(right, point.x())), max(top, min(bottom, point.y())))
 
 
 def roaming_area(pet, screen):

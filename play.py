@@ -674,7 +674,7 @@ class PetCard(QWidget):
         if accepted:
             self.owner.companion.rename(value)
             self.owner.save_profile()
-            self.owner.refresh_tray()
+            self.owner.sync_controls()
             self.sync()
             self.owner.effects.say(self.owner.voice['rename'])
 

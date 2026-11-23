@@ -16,9 +16,10 @@ import time
 from PySide6.QtCore import Qt, QTimer, QPoint, QRect
 from PySide6.QtGui import QColor, QCursor, QIcon, QPainter, QPixmap, QRegion, QTransform, QImage
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon
-from animals import (ACTIVITIES, ANIMAL_ROWS, BIRD_ROWS, EXTRA_ANIMATIONS, FLYERS, MONKEY_ROWS,
+from animals import (ACTIVITIES, ANIMAL_ROWS, BIRD_ROWS, FLYERS, MONKEY_ROWS,
                      PALETTES, PLAY_PACES, SHOWTIME, STYLES, TRICKS, Outing, animal_frame, owl_frame)
 from companion import Companion, voice_for
+from controls import ControlsWindow, QuickMenu
 from habitat import roaming_area
 from play import Effects, Firefly, PetCard, YarnBall, PET_SURFACE_FLAGS, set_pet_layer
 
@@ -248,11 +249,18 @@ class Pet(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setCursor(Qt.OpenHandCursor)
         self.setMouseTracking(True)
-        self.setToolTip('Click: pet · Hold: cuddle · Double-click: jump · Middle-click: pet card\nDrag: move · Stroke the head to purr · Right-click: toys and controls')
+        self.setToolTip('Click or right-click: Hide or Show menu · Middle-click: pet card\n'
+                        'Hold: cuddle · Double-click: jump · Drag: move · Stroke the head to purr')
         self.mode, self.mode_started, self.mode_until = 'waving', time.monotonic(), time.monotonic() + 2.1
         self.drag_origin = None
         self.dragged = False
         self.press_pos = QPoint()
+        self.click_pos = QPoint()
+        self.click_timer = QTimer(self)
+        self.click_timer.setSingleShot(True)
+        self.click_timer.setTimerType(Qt.PreciseTimer)
+        self.click_timer.timeout.connect(lambda: self.open_pet_menu(self.click_pos))
+        self.quick_menu = None
         self.frame_key = None
         self._frame_delay_ms = 100
         self._updating = False
@@ -281,10 +289,19 @@ class Pet(QWidget):
         self.ball = YarnBall(self)
         self.firefly = Firefly(self)
         self.card = PetCard(self)
+        self.controls = None
         self.tray = QSystemTrayIcon(QIcon(self.sprites.frame(0, 0)), self)
-        self.tray.setToolTip('Pixel Pet · right-click for controls')
+        self.tray.setToolTip('Pixel Pet · click to show · right-click for controls')
         self.tray.activated.connect(self.tray_clicked)
-        self.refresh_tray()
+        self.tray_menu = QMenu()
+        self.tray_menu.setStyleSheet(MENU_STYLE)
+        self.tray_controls = self.tray_menu.addAction(
+            'Show menu', lambda: QTimer.singleShot(0, self, self.open_controls))
+        self.tray_visibility = self.tray_menu.addAction('Show pet', self.toggle_pet_visibility)
+        self.tray_menu.addAction('Bring pet home', self.home)
+        self.tray_menu.addAction('Quit', self.quit)
+        self.update_tray_visibility()
+        self.tray.setContextMenu(self.tray_menu)
         if not preview:
             self.tray.show()
         position = self.settings.data['position']
@@ -298,9 +315,6 @@ class Pet(QWidget):
         self.ticker.setTimerType(Qt.PreciseTimer)
         self.ticker.timeout.connect(self.tick)
         self.ticker.start(40)
-        self.click_timer = QTimer(self)
-        self.click_timer.setSingleShot(True)
-        self.click_timer.timeout.connect(lambda: self.interact('pet'))
         self.hold_timer = QTimer(self)
         self.hold_timer.setSingleShot(True)
         self.hold_timer.timeout.connect(self.cuddle_hold)
@@ -334,6 +348,7 @@ class Pet(QWidget):
     def load_pet(self):
         self.sprites = Sprites(self.settings.data['pet'], self.settings.data['size'], self.settings.data['style'])
         region = self.sprites.prepare()
+        self.current = self.sprites.frame(0, 0)
         self.setFixedSize(self.sprites.width, self.sprites.height)
         self.setMask(region)
         self.frame_key = None
@@ -370,7 +385,7 @@ class Pet(QWidget):
         QApplication.instance().setWindowIcon(icon)
         self.play('waving')
         self.card.sync()
-        self.refresh_tray()
+        self.sync_controls()
 
     def resize_pet(self, size):
         self.stop_outing(return_to_perch=True)
@@ -382,14 +397,14 @@ class Pet(QWidget):
         self.recenter_roaming_area()
         self.remember_position()
         self.tick()
-        self.refresh_tray()
+        self.sync_controls()
 
     def home(self):
         self.stop_outing()
         g = QApplication.primaryScreen().availableGeometry()
         self.move(g.right() - self.width() - 22, g.bottom() - self.height() - 12)
         self.recenter_roaming_area()
-        self.show()
+        self.show_pet()
 
     def clamp_position(self):
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
@@ -456,7 +471,7 @@ class Pet(QWidget):
         self.save_profile()
         self.card.sync()
         if was_sleeping or self.companion.level != old_level:
-            self.refresh_tray()
+            self.sync_controls()
 
     def cuddle_hold(self):
         if self.drag_origin is not None and not self.dragged:
@@ -475,7 +490,7 @@ class Pet(QWidget):
         self.effects.say('Toss it! You can grab the yarn.')
         self.last_interaction = time.monotonic()
         self.save_profile()
-        self.refresh_tray()
+        self.sync_controls()
         self.tick()
 
     def caught_yarn(self):
@@ -579,7 +594,7 @@ class Pet(QWidget):
         self.firefly.launch()
         self.effects.say(f'Catch {self.firefly.target_count} fireflies in {self.firefly.duration} seconds!')
         self.save_profile()
-        self.refresh_tray()
+        self.sync_controls()
         self.tick()
 
     def stop_toys(self):
@@ -599,7 +614,7 @@ class Pet(QWidget):
         self.save_profile()
         self.tick()
         self.card.sync()
-        self.refresh_tray()
+        self.sync_controls()
 
     def follow_pointer(self):
         self.card.hide()
@@ -615,7 +630,7 @@ class Pet(QWidget):
             self.follow_until = time.monotonic() + 20
             self.effects.say(f"{self.voice['follow']} · 20 sec")
             self.save_profile()
-        self.refresh_tray()
+        self.sync_controls()
         self.tick()
 
     def start_focus(self, minutes=25):
@@ -626,7 +641,7 @@ class Pet(QWidget):
         self.save_profile()
         self.card.sync()
         self.tick()
-        self.refresh_tray()
+        self.sync_controls()
 
     def stop_focus(self):
         self.companion.data['focus_until'] = None
@@ -634,7 +649,7 @@ class Pet(QWidget):
         self.save_profile()
         self.card.sync()
         self.tick()
-        self.refresh_tray()
+        self.sync_controls()
 
     def walk_towards(self, center_x, top_y, dt, speed=112):
         dx = center_x - self.geometry().center().x()
@@ -659,7 +674,7 @@ class Pet(QWidget):
         self.mode_until = 0
         self.effects.say('Settling in right here.')
         self.save_profile()
-        self.refresh_tray()
+        self.sync_controls()
 
     def play(self, mode):
         self.mode = mode
@@ -668,7 +683,7 @@ class Pet(QWidget):
         self.mode_until = self.mode_started + sum(self.sprites.animations[mode][1]) * 3 / 1000
         self.last_interaction = self.mode_started
         if not self.isVisible():
-            self.show()
+            self.show_pet()
         self.tick()
 
     def frame_at(self, now, cursor):
@@ -727,16 +742,15 @@ class Pet(QWidget):
         now = time.monotonic()
         dt = max(0., min(.1, now - self.last_tick))
         self.last_tick = now
-        if not self.isVisible() and not self.preview:
-            self.ticker.setInterval(1000)
-            return
+        visible = self.isVisible() or self.preview
         if now - self.last_model_tick >= 1:
             self.last_model_tick = now
             for event in self.companion.tick():
                 if event == 'focus-complete':
-                    self.play('review')
-                    self.effects.burst('star', 18)
-                    self.effects.say(f"{self.voice['finish']} · Focus complete · +20 XP", 7)
+                    if visible:
+                        self.play('review')
+                        self.effects.burst('star', 18)
+                        self.effects.say(f"{self.voice['finish']} · Focus complete · +20 XP", 7)
                     if not self.preview and shutil.which('notify-send'):
                         subprocess.Popen(['notify-send', '--app-name=Pixel Pet', '--icon=' + str(ROOT / 'icon.png'),
                                           'Focus complete', f"{self.companion.data['name']} says: time for a stretch!"],
@@ -744,8 +758,16 @@ class Pet(QWidget):
                     self.save_profile()
             if self.card.isVisible():
                 self.card.sync()
+            if self.controls is not None and self.controls.isVisible():
+                self.controls.sync_live()
+        if not visible:
+            self.ticker.setInterval(1000)
+            return
         can_move = (not self.settings.data['paused'] and not self.companion.data['sleeping'] and
-                    self.companion.remaining() == 0 and self.drag_origin is None and not self.card.isVisible())
+                    self.companion.remaining() == 0 and self.drag_origin is None and not self.card.isVisible()
+                    and not self.click_timer.isActive()
+                    and (self.quick_menu is None or not self.quick_menu.isVisible())
+                    and QApplication.activePopupWidget() is None)
         previous = self.pos()
         if 0 < self.follow_until <= now:
             self.follow_until = 0
@@ -800,6 +822,8 @@ class Pet(QWidget):
             self.frame_key = key
             self.current = self.sprites.frame(*key)
             self.update()
+            if self.controls is not None and self.controls.isVisible():
+                self.controls.set_frame(self.current)
         self.effects.tick(dt)
         if now - self.last_saved > 30:
             self.save_profile()
@@ -830,6 +854,7 @@ class Pet(QWidget):
             painter.drawPixmap(0, 0, self.current)
 
     def mousePressEvent(self, event):
+        self.click_timer.stop()
         if event.button() == Qt.LeftButton:
             self.stop_outing()
             self.card.hide()
@@ -843,13 +868,9 @@ class Pet(QWidget):
         elif event.button() == Qt.MiddleButton:
             self.stop_outing(return_to_perch=True)
             self.card.open_card()
-        elif event.button() == Qt.RightButton:
-            self.stop_outing()
-            self.card.hide()
-            self.last_interaction = time.monotonic()
-            self.menu().exec(event.globalPosition().toPoint())
 
     def leaveEvent(self, event):
+        self.click_timer.stop()
         self.hover_point = None
         self.stroke_distance = 0
         super().leaveEvent(event)
@@ -858,6 +879,10 @@ class Pet(QWidget):
         super().hideEvent(event)
         if hasattr(self, 'effects'):
             self.effects.hide()
+        if hasattr(self, 'click_timer'):
+            self.click_timer.stop()
+        if getattr(self, 'quick_menu', None) is not None:
+            self.quick_menu.hide()
 
     def mouseMoveEvent(self, event):
         if self.drag_origin is not None:
@@ -888,13 +913,21 @@ class Pet(QWidget):
                 self.clamp_position()
                 self.recenter_roaming_area()
                 self.remember_position()
-            elif not self.long_pressed:
+            elif self.drag_origin is not None and not self.long_pressed:
+                self.click_pos = event.globalPosition().toPoint()
                 self.click_timer.start(QApplication.doubleClickInterval())
             self.drag_origin = None
             self.last_interaction = time.monotonic()
             self.setCursor(Qt.OpenHandCursor)
+        elif event.button() == Qt.RightButton:
+            self.stop_outing()
+            self.card.hide()
+            self.last_interaction = time.monotonic()
+            self.open_pet_menu(event.globalPosition().toPoint())
 
     def mouseDoubleClickEvent(self, event):
+        if event.button() != Qt.LeftButton:
+            return super().mouseDoubleClickEvent(event)
         self.click_timer.stop()
         self.hold_timer.stop()
         self.drag_origin = None
@@ -905,8 +938,65 @@ class Pet(QWidget):
 
     def tray_clicked(self, reason):
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
-            self.show()
+            self.show_pet()
             self.card.open_card()
+
+    def show_pet(self):
+        was_hidden = not self.isVisible()
+        self.show()
+        self.wake_animation()
+        if was_hidden:
+            self.update_tray_visibility()
+
+    def hide_pet(self):
+        self.stop_toys()
+        self.follow_until = 0
+        self.card.hide()
+        if self.controls is not None:
+            self.controls.hide()
+        self.effects.clear()
+        self.hide()
+        self.update_tray_visibility()
+
+    def open_pet_menu(self, point):
+        if self.isVisible():
+            if self.quick_menu is None:
+                self.quick_menu = QuickMenu(self)
+            self.quick_menu.open_at(point)
+
+    def open_controls(self, point=None):
+        self.click_timer.stop()
+        if self.quick_menu is not None:
+            self.quick_menu.hide()
+        if self.controls is None:
+            self.controls = ControlsWindow(self, PETS)
+        self.card.hide()
+        position = QCursor.pos() if point is None else point
+        screen = QApplication.screenAt(position) or self.screen() or QApplication.primaryScreen()
+        self.controls.open_on(screen)
+
+    def open_control_card(self):
+        self.launch_from_controls(self.card.open_card)
+
+    def launch_from_controls(self, action):
+        self.controls.hide()
+        self.show_pet()
+        action()
+
+    def toggle_pet_visibility(self):
+        if self.isVisible():
+            self.hide_pet()
+        else:
+            self.show_pet()
+
+    def update_tray_visibility(self):
+        visible = self.isVisible()
+        self.tray_controls.setVisible(visible)
+        self.tray_visibility.setText('Hide' if visible else 'Show pet')
+
+    def sync_controls(self):
+        if self.controls is not None and self.controls.isVisible():
+            self.controls.sync()
 
     def toggle(self, key):
         self.settings.data[key] = not self.settings.data[key]
@@ -932,7 +1022,7 @@ class Pet(QWidget):
             self.effects.clear_motion()
         self.settings.save()
         self.tick()
-        self.refresh_tray()
+        self.sync_controls()
 
     def set_play_pace(self, pace):
         self.stop_outing(return_to_perch=True)
@@ -940,7 +1030,7 @@ class Pet(QWidget):
         self.settings.data['play_pace'] = pace
         self.next_outing = time.monotonic() + 1.4
         self.settings.save()
-        self.refresh_tray()
+        self.sync_controls()
 
     def set_autostart(self, checked):
         if checked:
@@ -953,90 +1043,7 @@ class Pet(QWidget):
             )
         else:
             self.autostart_path.unlink(missing_ok=True)
-        self.refresh_tray()
-
-    def menu(self):
-        menu = QMenu()
-        menu.setStyleSheet(MENU_STYLE)
-        title = menu.addAction(f"{self.companion.data['name']}  ·  {PETS[self.settings.data['pet']]}")
-        title.setEnabled(False)
-        menu.addAction('Open pet card', lambda: self.card.open_card())
-        menu.addAction('Pet / cuddle', lambda: self.interact('cuddle'))
-        menu.addAction(self.voice['treat_label'], lambda: self.interact('treat'))
-        trick = menu.addAction(self.trick_label, self.active_trick)
-        trick.setEnabled(self.ready_for_trick())
-        if self.showtime_label:
-            showtime = menu.addAction(f'Showtime · {self.showtime_label}', self.start_showtime)
-            showtime.setEnabled(self.ready_for_trick())
-        menu.addAction('Firefly hunt', self.start_fireflies)
-        menu.addAction('Wake up' if self.companion.data['sleeping'] else 'Take a nap', lambda: self.toggle_nap())
-        menu.addAction('Stop following' if self.follow_until > time.monotonic() else 'Follow my cursor (20s)', lambda: self.follow_pointer())
-        focus = menu.addMenu('Focus together')
-        for minutes in (15, 25, 50):
-            focus.addAction(f'{minutes} minutes', lambda checked=False, m=minutes: self.start_focus(m))
-        if self.companion.data['focus_until'] is not None:
-            focus.addAction('Stop focus', lambda: self.stop_focus())
-        menu.addAction('Stop current play', self.stop_play)
-        menu.addSeparator()
-        pets = menu.addMenu('Choose pet')
-        mascots = QMenu('Other mascots', pets)
-        for key, name in PETS.items():
-            action = (pets if key in TRICKS else mascots).addAction(name)
-            action.setCheckable(True)
-            action.setChecked(key == self.settings.data['pet'])
-            action.triggered.connect(lambda checked=False, k=key: self.select_pet(k))
-        if mascots.actions():
-            pets.addMenu(mascots)
-        if self.settings.data['pet'] in TRICKS:
-            style_menu = menu.addMenu('Style')
-            for key, name in STYLES.items():
-                action = style_menu.addAction(name)
-                action.setCheckable(True)
-                action.setChecked(key == self.settings.data['style'])
-                action.triggered.connect(lambda checked=False, k=key: self.select_style(k))
-        sizes = menu.addMenu('Size')
-        for size, name in [(96, 'Tiny'), (128, 'Compact'), (160, 'Default'), (192, 'Large')]:
-            action = sizes.addAction(name)
-            action.setCheckable(True)
-            action.setChecked(size == self.settings.data['size'])
-            action.triggered.connect(lambda checked=False, s=size: self.resize_pet(s))
-        paces = menu.addMenu('Play pace')
-        for pace, (label, _) in PLAY_PACES.items():
-            action = paces.addAction(label)
-            action.setCheckable(True)
-            action.setChecked(pace == self.settings.data['play_pace'])
-            action.triggered.connect(lambda checked=False, value=pace: self.set_play_pace(value))
-        animations = menu.addMenu('Animate')
-        standard = (('waving', 'Wave'), ('jumping', 'Jump'), ('running', 'Work'),
-                    ('waiting', 'Think'), ('review', 'Happy'), ('failed', 'Oops'))
-        for mode, name in (*EXTRA_ANIMATIONS.get(self.animal, ()), *standard):
-            animations.addAction(name, lambda checked=False, m=mode: self.play(m))
-        menu.addSeparator()
-        for key, text in [('always_on_top', 'Always on top'), ('paused', 'Pause animation'),
-                          ('autonomous', 'Autonomous play'),
-                          ('roam', 'Walk around'), ('motion_effects', 'Motion effects'),
-                          ('chatty', 'Little speech bubbles')]:
-            action = menu.addAction(text)
-            action.setCheckable(True)
-            action.setChecked(self.settings.data[key])
-            action.triggered.connect(lambda checked=False, k=key: self.toggle(k))
-        startup = menu.addAction('Start at login')
-        startup.setCheckable(True)
-        startup.setChecked(self.autostart_path.exists())
-        startup.triggered.connect(self.set_autostart)
-        menu.addSeparator()
-        if shutil.which('chatgpt'):
-            menu.addAction('Open ChatGPT / Codex', self.open_chatgpt)
-        menu.addAction('Bring pet home', self.home)
-        menu.addAction('Quit', self.quit)
-        return menu
-
-    def refresh_tray(self):
-        old = self.tray.contextMenu()
-        self.tray_menu = self.menu()
-        self.tray.setContextMenu(self.tray_menu)
-        if old:
-            old.deleteLater()
+        self.sync_controls()
 
     def open_chatgpt(self):
         subprocess.Popen(['chatgpt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -1046,6 +1053,10 @@ class Pet(QWidget):
         self.remember_position()
         self.effects.hide()
         self.card.hide()
+        if self.quick_menu is not None:
+            self.quick_menu.close()
+        if self.controls is not None:
+            self.controls.close()
         self.tray.hide()
         QApplication.instance().quit()
 
@@ -1053,6 +1064,8 @@ class Pet(QWidget):
         self.stop_toys()
         self.effects.hide()
         self.card.hide()
+        if self.controls is not None:
+            self.controls.close()
         self.ticker.stop()
         self.click_timer.stop()
         self.hold_timer.stop()
@@ -1090,7 +1103,7 @@ def main():
             (lock_dir / 'show-request').touch()
             return
     pet = Pet(settings, preview=bool(args.preview))
-    pet.show()
+    pet.show_pet()
     app.setWindowIcon(QIcon(pet.sprites.frame(0, 0)))
     if args.preview:
         args.preview.mkdir(parents=True, exist_ok=True)
