@@ -24,13 +24,13 @@ Pixel Pet keeps its settings and friendship progress in `~/.config/pixel-pet/set
 ## Controls
 
 - **Right-click the pet** to see **Hide** and **Show menu**. Move onto the buttons to use them, or move away to dismiss them. Choose **Hide** to put the pet away. Click the tray icon or run the launcher again to bring it back.
-- **Show menu** opens a compact, zoo-themed controls window with a live habitat preview. Press **Esc** or switch to another window to dismiss either menu. The tray menu also offers **Show menu**.
+- **Show menu** opens a compact, zoo-themed controls window with a live habitat preview. Move the pointer outside the zoo window or choose **Close** to dismiss it. You can also press **Esc** or switch windows to dismiss either menu. The tray menu also offers **Show menu**.
 - **Appearance** lets you pick Cosmic Cat, Classic Cat, Monkey, Eagle, or Dusk Owl. Set **Colour**, **Size**, and **Speed** in the same tab. The bundled pets offer Original, Pastel, and Moonlight palettes.
 - **Hold** to cuddle, **double-click** to jump, **drag** to reposition, or **middle-click** to open the care card. For a head pat, use **Pet** in the care card.
 
 ## Play
 
-In **Play → Animate**, each pet has two exclusive moves. With **Autonomous play** enabled, pets occasionally perform one on their own. **Motion effects** adds animated props, including Seedy’s falling leaves and fruit when its sprite is installed.
+In **Play → Animate**, each pet has four exclusive moves. With **Autonomous play** enabled, your pet performs them automatically in shuffled rounds during idle time. **Motion effects** adds animated props, including Seedy’s falling leaves and fruit when its sprite is installed.
 
 - The cats prowl, stretch, groom, and chase yarn. Monkey climbs, swings, and cartwheels. **Eagle** and **Dusk Owl** use different wingbeats and return to perch after a flight.
 - In **Play**, use **Showtime** for a signature move, **Take flight** for either bird, or **Animate** for specific poses. Turn **Autonomous play** off in **Settings** to control when they move.

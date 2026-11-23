@@ -15,33 +15,61 @@ class Move(NamedTuple):
 
 MOVES = {
     'cat': (Move('Constellation stretch', 'stretch', 'spark', 'orbit', '#c6adff', 5),
-            Move('Meteor pounce', 'jumping', 'comet', 'shower', '#9cddff')),
+            Move('Meteor pounce', 'jumping', 'comet', 'shower', '#9cddff'),
+            Move('Nebula knead', 'groom', 'nebula', 'spiral', '#ed9cff', 5),
+            Move('Lunar leap', 'jumping', 'saturn', 'arc', '#b4b7ff', 1)),
     'cat-classic': (Move('Bat the yarn', 'waving', 'yarn', 'bounce', '#ec87a1', 1),
-                    Move('Butterfly watch', 'crouch-right', 'butterfly', 'flutter', '#ffc170', 2)),
+                    Move('Butterfly watch', 'crouch-right', 'butterfly', 'flutter', '#ffc170', 2),
+                    Move('Chase the mouse', 'running', 'mouse', 'scurry', '#bba69e', 1),
+                    Move('Ribbon swat', 'waving', 'bow', 'ribbon', '#ff96ad', 3)),
     'monkey': (Move('Banana juggle', 'trick-right', 'banana', 'juggle', '#ffd457'),
-               Move('Vine shake', 'tail-hang', 'frond', 'flutter', '#89ce69', 4)),
+               Move('Vine shake', 'tail-hang', 'frond', 'flutter', '#89ce69', 4),
+               Move('Coconut toss', 'jumping', 'nut', 'arc', '#c18d5a', 2),
+               Move('Blossom swing', 'swing-right', 'bloom', 'spiral', '#ffa4ad', 4)),
     'eagle': (Move('Thermal spiral', 'trick-glide-right', 'gust', 'orbit', '#a6dfef'),
-              Move('River strike', 'trick-land-right', 'fish', 'splash', '#77d6ed', 2)),
+              Move('River strike', 'trick-land-right', 'fish', 'splash', '#77d6ed', 2),
+              Move('Cliff dive', 'trick-land-right', 'talon', 'swoop', '#fac973', 2),
+              Move('Summit soar', 'trick-takeoff-right', 'cloud', 'ribbon', '#d3eafa', 3)),
     'owl': (Move('Moonlit glide', 'trick-glide-right', 'moon', 'rise', '#ffe3a2', 2),
-            Move('Moth patrol', 'preen', 'moth', 'flutter', '#ddc8ec')),
+            Move('Moth patrol', 'preen', 'moth', 'flutter', '#ddc8ec'),
+            Move('Twilight blink', 'waiting', 'twinkle', 'pulse', '#b5b3ff', 4),
+            Move('Silent wingbeat', 'trick-flap-right', 'plume', 'swoop', '#ccc1ff', 3)),
     'hoots': (Move('Hoot echoes', 'trick-flap-right', 'echo', 'pulse', '#f7c681'),
-              Move('Downy drift', 'preen', 'down', 'flutter', '#ecd6aa', 4)),
+              Move('Downy drift', 'preen', 'down', 'flutter', '#ecd6aa', 4),
+              Move('Acorn patrol', 'trick-glide-right', 'acorn', 'arc', '#d6aa67', 2),
+              Move('Lantern flight', 'trick-takeoff-right', 'lantern', 'spiral', '#ffcb62', 4)),
     'codex': (Move('Type a command', 'review', 'prompt', 'type', '#8df1b5', 4),
-              Move('Compile sparks', 'running', 'braces', 'rise', '#aabaff')),
+              Move('Compile sparks', 'running', 'braces', 'rise', '#aabaff'),
+              Move('Trace a circuit', 'running', 'chip', 'scan', '#9fe3bc', 3),
+              Move('Patch parade', 'review', 'patch', 'ribbon', '#cab8ff', 4)),
     'dewey': (Move('Puddle splash', 'jumping', 'drop', 'splash', '#71dfff', 6),
-              Move('Bubble float', 'waving', 'bubble', 'rise', '#abedff', 4)),
+              Move('Bubble float', 'waving', 'bubble', 'rise', '#abedff', 4),
+              Move('Rain dance', 'jumping', 'rain', 'shower', '#8ad9ff', 6),
+              Move('Ripple rings', 'waiting', 'ring', 'ripple', '#9ceefe', 4)),
     'fireball': (Move('Ember sneeze', 'failed', 'ember', 'shower', '#ff9348', 5),
-                 Move('Flame halo', 'jumping', 'flame', 'orbit', '#ffd55e', 4)),
+                 Move('Flame halo', 'jumping', 'flame', 'orbit', '#ffd55e', 4),
+                 Move('Cinder cyclone', 'running', 'cinder', 'spiral', '#ffac50', 6),
+                 Move('Lava leap', 'jumping', 'lava', 'arc', '#ff694f', 4)),
     'rocky': (Move('Pebble tumble', 'jumping', 'pebble', 'bounce', '#c7a783', 4),
-              Move('Crystal glint', 'review', 'crystal', 'pulse', '#c9b0fb')),
+              Move('Crystal glint', 'review', 'crystal', 'pulse', '#c9b0fb'),
+              Move('Fossil dig', 'waving', 'fossil', 'rise', '#e6c49e', 2),
+              Move('Fault tremor', 'failed', 'crack', 'ripple', '#d5a87b', 4)),
     'seedy': (Move('Leaf fall', 'waving', 'leaf', 'flutter', '#83c85a', 4),
-              Move('Fruit drop', 'jumping', 'apple', 'drop', '#ef7764', 2)),
+              Move('Fruit drop', 'jumping', 'apple', 'drop', '#ef7764', 2),
+              Move('Dandelion breeze', 'waving', 'tuft', 'ribbon', '#fff2cc', 5),
+              Move('Petal swirl', 'review', 'petal', 'spiral', '#f29daa', 5)),
     'stacky': (Move('Restack blocks', 'review', 'block', 'stack', '#b8a1fa'),
-               Move('Topple tower', 'failed', 'brick', 'bounce', '#8498c9')),
+               Move('Topple tower', 'failed', 'brick', 'bounce', '#8498c9'),
+               Move('Domino run', 'running', 'domino', 'scurry', '#99c8e8', 5),
+               Move('Tile fan', 'waving', 'tile', 'arc', '#e8addd', 4)),
     'bsod': (Move('Error cascade', 'failed', 'error', 'shower', '#80baff', 4),
-             Move('Reboot sequence', 'review', 'power', 'type', '#a4ebff')),
+             Move('Reboot sequence', 'review', 'power', 'type', '#a4ebff'),
+             Move('Memory scan', 'waiting', 'ram', 'scan', '#88c6ff', 3),
+             Move('Dump bytes', 'failed', 'byte', 'drop', '#a7dcff', 4)),
     'null-signal': (Move('Signal sweep', 'waiting', 'signal', 'pulse', '#f47b97', 4),
-                    Move('Static leak', 'failed', 'static', 'flutter', '#ca9fc1', 5)),
+                    Move('Static leak', 'failed', 'static', 'flutter', '#ca9fc1', 5),
+                    Move('Antenna search', 'waiting', 'dish', 'scan', '#ea9cb6', 3),
+                    Move('Lost packets', 'running', 'packet', 'swoop', '#cc98c4', 4)),
 }
 
 # 1 is the prop colour, 2 a highlight, and 3 the stem or contrasting detail.
@@ -74,6 +102,34 @@ GLYPHS = {
     'power': ('00200','10201','10001','10001','01110'),
     'signal': ('00001','00101','10101'),
     'static': ('011001','100100','001011'),
+    'nebula': ('011001', '112110', '001211', '010110'),
+    'saturn': ('001100', '012211', '111110', '001100'),
+    'mouse': ('010100', '121110', '011111', '000001'),
+    'bow': ('11011', '12121', '01310', '01010'),
+    'nut': ('00300', '01110', '12111', '11111', '01110'),
+    'bloom': ('01010', '11211', '02220', '11211', '01010'),
+    'talon': ('10010', '10010', '11011', '02102'),
+    'cloud': ('002200', '021120', '111111', '011110'),
+    'twinkle': ('01001', '12100', '01000', '00010'),
+    'plume': ('00011', '00121', '01210', '11000'),
+    'acorn': ('00300', '22222', '11111', '01110', '00100'),
+    'lantern': ('02220', '01010', '12221', '01110'),
+    'chip': ('01010', '12221', '01110', '12221', '01010'),
+    'patch': ('11111', '10201', '12221', '10201', '11111'),
+    'rain': ('00001', '00010', '00100', '01000'),
+    'ring': ('01110', '10001', '01110'),
+    'cinder': ('00110', '01210', '11000'),
+    'lava': ('00100', '01210', '12121', '11111', '01110'),
+    'fossil': ('01110', '12001', '10111', '01100'),
+    'crack': ('00010', '00100', '01110', '01000', '10000'),
+    'tuft': ('20102', '02120', '00200', '00300', '03000'),
+    'petal': ('01110', '12210', '01100', '01000'),
+    'domino': ('111', '121', '111', '121', '111'),
+    'tile': ('00200', '02110', '21111', '01110', '00100'),
+    'ram': ('222222', '121211', '111111', '030303'),
+    'byte': ('01110', '12001', '11111'),
+    'dish': ('10001', '01110', '00100', '01110'),
+    'packet': ('22221', '12111', '11211', '11111'),
 }
 
 
@@ -115,6 +171,21 @@ def advance_prop(item):
         x, y = .22 + t * .8 + spread * .2, .25 + spread * (.15 + t * .5)
     elif path == 'type':
         x, y = -.4 + i * .25, -.18 - .12 * math.sin(min(1, max(0, 4 * t - i * .45)) * math.pi)
+    elif path == 'spiral':
+        radius = .12 + .66 * t
+        x, y = radius * math.cos(2 * angle), .52 - t * .62 + radius * .45 * math.sin(2 * angle)
+    elif path == 'arc':
+        x, y = (t - .5) * 1.6 + spread * .3, .74 - (1 - (2 * t - 1) ** 2) * (.65 + i * .09)
+    elif path == 'scurry':
+        x, y = (t - .5) * 1.8 + spread * .25, .88 - .12 * abs(math.sin(3 * angle))
+    elif path == 'ribbon':
+        x, y = (t - .5) * 1.4 + spread * .4, .14 + .20 * math.sin(2 * angle)
+    elif path == 'swoop':
+        x, y = (t - .5) * 1.5 + spread * .3, -.12 + .92 * math.sin(math.pi * t)
+    elif path == 'scan':
+        x, y = .65 * math.sin(2 * math.pi * t), .04 + i * .21
+    elif path == 'ripple':
+        x, y = spread * (.1 + 1.1 * t), .87 + .08 * math.cos(angle + t * 8)
     else:  # stack
         x, y = .48, min(.9 - i * .15, -.45 + 3 * max(0, t - i * .12) ** 2)
     item['x'] = item['origin_x'] + x * size

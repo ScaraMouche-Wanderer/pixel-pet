@@ -182,10 +182,10 @@ class PetTests(unittest.TestCase):
         pet = self.pet
         pet.select_pet('seedy')
         pet.settings.data.update(roam=False, autonomous=True, motion_effects=True)
-        for move in MOVES['seedy']:
-            pet.mode_until = pet.next_pet_move = 0
-            with patch('pet.random.choice', return_value=move):
-                pet.tick()
+        pet.move_queue = list(reversed(MOVES['seedy'][:2]))
+        for move in MOVES['seedy'][:2]:
+            pet.last_interaction = pet.mode_until = pet.next_pet_move = 0
+            pet.tick()
             prop = pet.effects.particles[0]
             self.assertEqual(prop['kind'], move.prop)
             initial_y = prop['y']
@@ -196,6 +196,21 @@ class PetTests(unittest.TestCase):
         pet.mode_until = pet.next_pet_move = 0
         pet.tick()
         self.assertFalse(pet.effects.particles)
+
+    def test_exclusive_moves_cycle_automatically_with_zoo_open(self):
+        pet = self.pet
+        pet.select_pet('cat')
+        pet.settings.data.update(autonomous=True, roam=False, motion_effects=True)
+        pet.open_controls()
+        seen = []
+        for _ in MOVES['cat']:
+            pet.last_interaction = pet.next_pet_move = 0
+            pet.tick()
+            seen.append(pet.effects.particles[0]['kind'])
+        self.assertCountEqual(seen, [move.prop for move in MOVES['cat']])
+        pet.controls.findChild(QPushButton, 'closeZoo').click()
+        self.assertFalse(pet.controls.isVisible())
+        self.assertFalse(pet.controls.pointer_watch.isActive())
 
     def test_double_click_jumps_without_opening_a_menu(self):
         p = self.pet

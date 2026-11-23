@@ -1,6 +1,6 @@
 """The standalone window for Pixel Pet's appearance, play, and settings."""
-from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPixmap, QPolygon
+from PySide6.QtCore import QElapsedTimer, QEvent, QPoint, QRect, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QCursor, QIcon, QLinearGradient, QPainter, QPainterPath, QPixmap, QPolygon
 from PySide6.QtWidgets import (QApplication, QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QProgressBar,
                                QScrollArea, QSizePolicy, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
 
@@ -275,6 +275,11 @@ class ControlsWindow(DismissibleDialog):
         self.setStyleSheet(CONTROLS_STYLE)
         self.setFixedSize(CONTROLS_SIZE)
         self.positioned = False
+        self.outside_time = QElapsedTimer()
+        self.pointer_watch = QTimer(self)
+        self.pointer_watch.setInterval(100)
+        self.pointer_watch.timeout.connect(self.check_pointer)
+        self.pointer_entered = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(17, 13, 17, 11)
@@ -323,7 +328,13 @@ class ControlsWindow(DismissibleDialog):
             scroll.setWidget(page)
             pages.addWidget(scroll)
         self.tabs.currentChanged.connect(pages.setCurrentIndex)
-        layout.addWidget(self.tabs)
+        navigation = QHBoxLayout()
+        navigation.addWidget(self.tabs, 1)
+        close = QPushButton('Close', objectName='closeZoo')
+        close.setAccessibleName('Close zoo menu')
+        close.clicked.connect(self.hide)
+        navigation.addWidget(close)
+        layout.addLayout(navigation)
         layout.addWidget(pages, 1)
         for button in self.findChildren(QPushButton):
             button.setAutoDefault(False)
@@ -339,9 +350,24 @@ class ControlsWindow(DismissibleDialog):
             self.move(area.center() - self.rect().center())
             self.positioned = True
         self.sync()
+        self.pointer_entered = False
+        self.outside_time.start()
         self.show()
+        self.pointer_watch.start()
         self.raise_()
         self.activateWindow()
+
+    def check_pointer(self):
+        # Native decorations and other apps may receive the last leave event.
+        if self.frameGeometry().contains(QCursor.pos()) or QApplication.mouseButtons():
+            self.pointer_entered = True
+            self.outside_time.restart()
+        elif self.outside_time.elapsed() >= (450 if self.pointer_entered else 3000):
+            self.hide()
+
+    def hideEvent(self, event):
+        self.pointer_watch.stop()
+        super().hideEvent(event)
 
     def sync(self):
         self.appearance.sync()
