@@ -11,6 +11,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QSystemTrayIcon, QWidget
 from animals import ACTIVITIES, EXTRA_ANIMATIONS, FLYERS, Outing
 from bubbles import bubble_position, fit_text, theme_for
+from pet_moves import MOVES
 from companion import voice_for
 from pet import Settings, Sprites, Pet, PETS, ROWS
 
@@ -157,6 +158,44 @@ class PetTests(unittest.TestCase):
         QTest.mouseClick(p, Qt.LeftButton, pos=point)
         QTest.qWait(QApplication.doubleClickInterval() + 50)
         self.assertIsNone(p.quick_menu)
+
+    def test_exclusive_moves_run_from_play_menu_for_every_installed_pet(self):
+        pet = self.pet
+        pet.settings.data.update(autonomous=False, roam=False, motion_effects=True)
+        for species in PETS:
+            pet.select_pet(species)
+            for index, move in enumerate(MOVES[species]):
+                with self.subTest(species=species, move=move.name):
+                    pet.open_controls()
+                    button = pet.controls.play.move_buttons[index]
+                    self.assertEqual(button.text(), move.name)
+                    button.click()
+                    self.assertEqual(pet.mode, move.pose)
+                    props = [item for item in pet.effects.particles if 'path' in item]
+                    self.assertEqual([item['kind'] for item in props], [move.prop] * move.count)
+                    pet.effects.tick(.2)
+                    self.assertFalse(pet.effects.grab().isNull())
+        self.assertEqual(pet.companion.data['xp'], 0)
+
+    @unittest.skipUnless('seedy' in PETS, 'Optional Seedy sprite is not installed')
+    def test_seedy_drops_leaves_and_fruit_autonomously(self):
+        pet = self.pet
+        pet.select_pet('seedy')
+        pet.settings.data.update(roam=False, autonomous=True, motion_effects=True)
+        for move in MOVES['seedy']:
+            pet.mode_until = pet.next_pet_move = 0
+            with patch('pet.random.choice', return_value=move):
+                pet.tick()
+            prop = pet.effects.particles[0]
+            self.assertEqual(prop['kind'], move.prop)
+            initial_y = prop['y']
+            pet.effects.tick(1)
+            self.assertGreater(prop['y'], initial_y)
+            pet.effects.clear()
+        pet.settings.data['autonomous'] = False
+        pet.mode_until = pet.next_pet_move = 0
+        pet.tick()
+        self.assertFalse(pet.effects.particles)
 
     def test_double_click_jumps_without_opening_a_menu(self):
         p = self.pet

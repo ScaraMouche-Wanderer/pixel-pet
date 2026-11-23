@@ -1,13 +1,15 @@
 """Pixel effects, desktop toys, and the companion card."""
+from functools import lru_cache
 import math
 import random
 import time
 
 from PySide6.QtCore import Qt, QEvent, QPoint, QRect
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QRegion
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap, QRegion
 from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                                QLabel, QPushButton, QProgressBar, QInputDialog)
 
+from pet_moves import GLYPHS, advance_prop
 from bubbles import bubble_position, fit_text, paint_bubble, theme_for
 
 
@@ -51,6 +53,21 @@ def pixel_shape(painter, shape, x, y, color, scale=2):
         for column, bit in enumerate(line):
             if bit == '1':
                 painter.drawRect(int(x + column * scale), int(y + row * scale), scale, scale)
+
+
+@lru_cache(maxsize=64)
+def prop_sprite(kind, color):
+    rows = GLYPHS[kind]
+    sprite = QPixmap(max(map(len, rows)) * 2, len(rows) * 2)
+    sprite.fill(Qt.transparent)
+    painter = QPainter(sprite)
+    palette = (None, QColor(color), QColor('#fff1c5'), QColor('#598844'))
+    for row, line in enumerate(rows):
+        for column, code in enumerate(line):
+            if code != '0':
+                painter.fillRect(column * 2, row * 2, 2, 2, palette[int(code)])
+    painter.end()
+    return sprite
 
 
 class Effects(QWidget):
@@ -166,6 +183,9 @@ class Effects(QWidget):
         had_particles = bool(self.particles)
         for item in self.particles:
             item['life'] -= dt
+            if 'path' in item:
+                advance_prop(item)
+                continue
             item['x'] += item['vx'] * dt
             item['y'] += item['vy'] * dt
             item['vy'] += 12 * dt
@@ -201,6 +221,12 @@ class Effects(QWidget):
         theme = theme_for(self.owner.settings.data['pet'], self.owner.settings.data['style'])
         origin = self.art.topLeft() + QPoint(self.art.width() // 2, 24) - self.pos()
         for item in self.particles:
+            if 'path' in item:
+                p.setOpacity(min(1., item['life'] / .35))
+                p.drawPixmap(round(item['x']) - self.x(), round(item['y']) - self.y(),
+                             prop_sprite(item['kind'], item['color']))
+                p.setOpacity(1.)
+                continue
             shape = PARTICLES[item['kind']]
             if 'duration' in item:
                 color = QColor(item['color'])

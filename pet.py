@@ -18,6 +18,7 @@ from PySide6.QtGui import QColor, QCursor, QIcon, QPainter, QPixmap, QRegion, QT
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon
 from animals import (ACTIVITIES, ANIMAL_ROWS, BIRD_ROWS, FLYERS, MONKEY_ROWS,
                      PALETTES, PLAY_PACES, SHOWTIME, STYLES, TRICKS, Outing, animal_frame, owl_frame)
+from pet_moves import MOVES, move_particles
 from companion import Companion, voice_for
 from controls import ControlsWindow, QuickMenu
 from habitat import roaming_area
@@ -265,6 +266,7 @@ class Pet(QWidget):
         self.last_tick = time.monotonic()
         self.last_interaction = time.monotonic()
         self.next_outing = self.last_interaction + 1.8
+        self.next_pet_move = self.last_interaction + random.uniform(8, 18)
         self.last_motion_mark = 0.
         self.activities = []
         self.last_activity = None
@@ -517,6 +519,20 @@ class Pet(QWidget):
                     self.activities.append(self.activities.pop(0))
         self.last_activity = self.activities.pop(0)
         return self.last_activity
+
+    def perform_pet_move(self, move):
+        pet = self.settings.data['pet']
+        if move not in MOVES[pet] or not self.ready_for_trick():
+            return
+        self.stop_toys()
+        self.follow_until = 0
+        now = time.monotonic()
+        self.next_pet_move = now + random.uniform(12, 28) / self.play_pace
+        self.next_outing = max(self.next_outing, now + 3)
+        if self.settings.data['motion_effects']:
+            art = self.mask().boundingRect().translated(self.pos())
+            self.effects.particles.extend(move_particles(move, art))
+        self.play(move.pose)
 
     def start_showtime(self):
         if self.showtime_label and self.ready_for_trick():
@@ -784,6 +800,10 @@ class Pet(QWidget):
             g = (self.screen() or QApplication.primaryScreen()).availableGeometry()
             goal = max(g.left() + 50, min(pointer.x() - 55, g.right() - 50))
             self.walk_towards(goal, self.y(), dt)
+        elif (self.settings.data['autonomous'] and can_move and now >= self.next_pet_move
+              and now >= self.mode_until and not self.underMouse()
+              and not (self.controls and self.controls.isVisible())):
+            self.perform_pet_move(random.choice(MOVES[self.settings.data['pet']]))
         elif (self.settings.data['autonomous'] and self.settings.data['pet'] in TRICKS
               and can_move and now >= self.next_outing and now - self.last_interaction >= 1):
             self.perform_trick(now, automatic=True)

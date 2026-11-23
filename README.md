@@ -30,6 +30,8 @@ Pixel Pet keeps its settings and friendship progress in `~/.config/pixel-pet/set
 
 ## Play
 
+In **Play → Animate**, each pet has two exclusive moves. With **Autonomous play** enabled, pets occasionally perform one on their own. **Motion effects** adds animated props, including Seedy’s falling leaves and fruit when its sprite is installed.
+
 - The cats prowl, stretch, groom, and chase yarn. Monkey climbs, swings, and cartwheels. **Eagle** and **Dusk Owl** use different wingbeats and return to perch after a flight.
 - In **Play**, use **Showtime** for a signature move, **Take flight** for either bird, or **Animate** for specific poses. Turn **Autonomous play** off in **Settings** to control when they move.
 - In **Play**, try **Firefly hunt** for a short desktop game or **Focus together** for a 15-, 25-, or 50-minute timer. Linux systems with `notify-send` also show a notification at the end of a focus session.

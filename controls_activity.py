@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (QBoxLayout, QCheckBox, QFrame, QGridLayout, QHBox
                                QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
 from animals import EXTRA_ANIMATIONS
+from pet_moves import MOVES
 
 
 STANDARD_ANIMATIONS = (
@@ -55,6 +56,7 @@ class PlayPage(QWidget):
     def __init__(self, owner):
         super().__init__()
         self.owner = owner
+        self.move_buttons = []
         self.animation_animal = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -145,17 +147,26 @@ class PlayPage(QWidget):
         if focusing:
             minutes, seconds = divmod(companion.remaining(), 60)
             self.focus_timer.setText(f'{minutes:02d}:{seconds:02d}')
-        if self.animation_animal != owner.animal:
-            self.animation_animal = owner.animal
+        pet = owner.settings.data['pet']
+        if self.animation_animal != pet:
+            self.animation_animal = pet
             while self.animations.count():
                 button = self.animations.takeAt(0).widget()
                 button.hide()
                 button.deleteLater()
-            extra = EXTRA_ANIMATIONS.get(self.animation_animal, ())
-            for index, (mode, text) in enumerate((*extra, *STANDARD_ANIMATIONS)):
+            self.move_buttons.clear()
+            for index, move in enumerate(MOVES[pet]):
+                button = _button(f'pet-move-{index}', move.name, lambda checked=False, move=move:
+                                 owner.launch_from_controls(lambda: owner.perform_pet_move(move)))
+                self.move_buttons.append(button)
+                self.animations.addWidget(button, *divmod(index, self.animation_width))
+            extra = EXTRA_ANIMATIONS.get(owner.animal, ())
+            for index, (mode, text) in enumerate((*extra, *STANDARD_ANIMATIONS), start=len(MOVES[pet])):
                 button = _button(f'animate-{mode}', text, lambda checked=False, pose=mode: owner.play(pose))
                 row, column = divmod(index, self.animation_width)
                 self.animations.addWidget(button, row, column)
+        for button in self.move_buttons:
+            button.setEnabled(owner.ready_for_trick())
 
 
 class _OptionToggle(QCheckBox):
