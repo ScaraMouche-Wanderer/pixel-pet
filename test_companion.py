@@ -3,6 +3,21 @@ from companion import Companion
 
 
 class CompanionTests(unittest.TestCase):
+    def test_increasing_level_costs_and_overflow(self):
+        c = Companion()
+        for xp, expected in ((0, (1, 0, 30)), (29, (1, 29, 30)), (30, (2, 0, 40)),
+                             (69, (2, 39, 40)), (70, (3, 0, 50)), (121, (4, 1, 60))):
+            c.data['xp'] = xp
+            self.assertEqual(c.friendship_progress, expected)
+
+    def test_old_save_keeps_level_and_xp_across_restarts(self):
+        c = Companion({'xp': 559})
+        self.assertEqual(c.friendship_progress, (19, 19, 210))
+        c.data['xp'] += 192
+        restored = Companion(c.snapshot())
+        self.assertEqual(restored.data['xp'], 751)
+        self.assertEqual(restored.friendship_progress, (20, 1, 220))
+
     def test_friendship_and_care_remembered_after_restart(self):
         c = Companion(now=100)
         for _ in range(5):

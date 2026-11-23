@@ -166,7 +166,7 @@ def voice_for(pet):
 class Companion:
     def __init__(self, saved=None, now=None):
         now = time.time() if now is None else now
-        self.data = {'name': 'Mochi', 'xp': 0, 'affection': 58., 'fullness': 80., 'energy': 85.,
+        self.data = {'name': 'Mochi', 'xp': 0, 'legacy_levels': 0, 'affection': 58., 'fullness': 80., 'energy': 85.,
                      'pets': 0, 'treats': 0, 'catches': 0, 'focus_sessions': 0, 'firefly_rounds': 0,
                      'sleeping': False, 'focus_until': None, 'last_updated': now}
         if isinstance(saved, dict):
@@ -178,6 +178,12 @@ class Companion:
                 value = saved.get(key)
                 if type(value) in (int, float) and math.isfinite(value):
                     self.data[key] = value if key in ('last_updated', 'focus_until') else max(0., min(100., value))
+            # Previously each completed level cost 30 XP. Keep those levels and
+            # the leftover XP while keeping lifetime earned XP unchanged.
+            old_limit = self.data['xp'] // 30
+            legacy = saved.get('legacy_levels', old_limit)
+            if type(legacy) is int:
+                self.data['legacy_levels'] = max(0, min(legacy, old_limit))
             self.data['sleeping'] = saved.get('sleeping') is True
             self.rename(saved.get('name', 'Mochi'))
 
@@ -187,7 +193,17 @@ class Companion:
 
     @property
     def level(self):
-        return self.data['xp'] // 30 + 1
+        return self.friendship_progress[0]
+
+    @property
+    def friendship_progress(self):
+        """Return current level, XP earned within it, and XP required to advance."""
+        legacy = self.data['legacy_levels']
+        adjusted_xp = self.data['xp'] + 5 * legacy * (legacy - 1)
+        # Completing n levels costs 30 + 40 + ... = 5*n*(n+5).
+        completed = (math.isqrt(25 + 4 * (adjusted_xp // 5)) - 5) // 2
+        earned = adjusted_xp - 5 * completed * (completed + 5)
+        return completed + 1, earned, 30 + 10 * completed
 
     @property
     def mood(self):

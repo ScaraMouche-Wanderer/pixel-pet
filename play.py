@@ -532,7 +532,6 @@ class PetCard(QWidget):
         friendship.addWidget(self.level)
         self.progress = QProgressBar()
         self.progress.setTextVisible(False)
-        self.progress.setRange(0, 30)
         self.progress.setFixedHeight(6)
         self.progress.setAccessibleName('Progress to next friendship level')
         friendship.addWidget(self.progress)
@@ -634,8 +633,11 @@ class PetCard(QWidget):
         self.showtime_button.setVisible(bool(self.owner.showtime_label))
         self.showtime_button.setText(f'Showtime · {self.owner.showtime_label}')
         self.showtime_button.setEnabled(self.owner.ready_for_trick())
-        self.level.setText(f"Friendship level {companion.level}   ·   {d['xp']} XP")
-        self.progress.setValue(d['xp'] % 30)
+        level, earned, required = companion.friendship_progress
+        self.level.setText(f'Friendship level {level}  ·  {required - earned} XP to level {level + 1}')
+        self.progress.setToolTip(f"{d['xp']} total XP · {earned} / {required} XP this level")
+        self.progress.setRange(0, required)
+        self.progress.setValue(earned)
         for key, (text, title, meter) in self.meters.items():
             value = round(d[key])
             title.setText(f'{text} {value}%')

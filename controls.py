@@ -1,7 +1,7 @@
 """The standalone window for Pixel Pet's appearance, play, and settings."""
 from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPixmap, QPolygon
-from PySide6.QtWidgets import (QApplication, QDialog, QFrame, QHBoxLayout, QLabel, QPushButton,
+from PySide6.QtWidgets import (QApplication, QDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QProgressBar,
                                QScrollArea, QSizePolicy, QStackedWidget, QTabBar, QVBoxLayout, QWidget)
 
 from bubbles import PAW, STAR
@@ -281,7 +281,7 @@ class ControlsWindow(DismissibleDialog):
         layout.setSpacing(8)
         hero = QFrame(objectName='controlsHero')
         head = QHBoxLayout(hero)
-        head.setContentsMargins(12, 7, 7, 7)
+        head.setContentsMargins(12, 4, 7, 3)
         head.setSpacing(10)
         identity = QVBoxLayout()
         identity.setSpacing(2)
@@ -292,6 +292,13 @@ class ControlsWindow(DismissibleDialog):
         self.mood = QLabel(objectName='petMood', wordWrap=True, textFormat=Qt.PlainText)
         for label in (self.name, self.details, self.mood):
             identity.addWidget(label)
+        self.progress = QProgressBar()
+        self.progress.setAccessibleName('Progress to next friendship level')
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(5)
+        self.progress.setStyleSheet('QProgressBar { background: #25352b; border: none; border-radius: 2px; }'
+                                    'QProgressBar::chunk { background: #b5cd78; border-radius: 2px; }')
+        identity.addWidget(self.progress)
         identity.addStretch()
         head.addLayout(identity, 1)
         self.preview = SpritePreview()
@@ -349,7 +356,10 @@ class ControlsWindow(DismissibleDialog):
         pet = self.owner.settings.data['pet']
         companion = self.owner.companion
         self.name.setText(companion.data['name'])
-        self.details.setText(f'{self.pets[pet]}  ·  Friendship level {companion.level}')
+        level, earned, required = companion.friendship_progress
+        self.details.setText(f'{self.pets[pet]}  ·  Level {level}  ·  {required - earned} XP to level {level + 1}')
+        self.progress.setRange(0, required)
+        self.progress.setValue(earned)
         self.mood.setText(companion.mood_for(pet))
         self.play.sync()
 
