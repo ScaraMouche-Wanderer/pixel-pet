@@ -249,7 +249,7 @@ class Pet(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setCursor(Qt.OpenHandCursor)
         self.setMouseTracking(True)
-        self.setToolTip('Click or right-click: Hide or Show menu · Middle-click: pet card\n'
+        self.setToolTip('Hover: Hide or Show menu · Middle-click: pet card\n'
                         'Hold: cuddle · Double-click: jump · Drag: move · Stroke the head to purr')
         self.mode, self.mode_started, self.mode_until = 'waving', time.monotonic(), time.monotonic() + 2.1
         self.drag_origin = None
@@ -260,6 +260,10 @@ class Pet(QWidget):
         self.click_timer.setSingleShot(True)
         self.click_timer.setTimerType(Qt.PreciseTimer)
         self.click_timer.timeout.connect(lambda: self.open_pet_menu(self.click_pos))
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setSingleShot(True)
+        self.hover_timer.setInterval(180)
+        self.hover_timer.timeout.connect(self.open_hover_menu)
         self.quick_menu = None
         self.frame_key = None
         self._frame_delay_ms = 100
@@ -765,7 +769,7 @@ class Pet(QWidget):
             return
         can_move = (not self.settings.data['paused'] and not self.companion.data['sleeping'] and
                     self.companion.remaining() == 0 and self.drag_origin is None and not self.card.isVisible()
-                    and not self.click_timer.isActive()
+                    and not self.click_timer.isActive() and not self.hover_timer.isActive()
                     and (self.quick_menu is None or not self.quick_menu.isVisible())
                     and QApplication.activePopupWidget() is None)
         previous = self.pos()
@@ -853,7 +857,23 @@ class Pet(QWidget):
         if self.current is not None:
             painter.drawPixmap(0, 0, self.current)
 
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        if self.quick_menu is not None and self.quick_menu.isVisible():
+            self.quick_menu.leave_timer.stop()
+        else:
+            self.hover_timer.start()
+
+    def open_hover_menu(self):
+        if (self.underMouse() and self.drag_origin is None and not QApplication.mouseButtons()
+                and not self.card.isVisible() and not (self.controls and self.controls.isVisible())
+                and QApplication.activePopupWidget() is None):
+            self.open_pet_menu(QCursor.pos(), hover=True)
+
     def mousePressEvent(self, event):
+        self.hover_timer.stop()
+        if self.quick_menu is not None:
+            self.quick_menu.hide()
         self.click_timer.stop()
         if event.button() == Qt.LeftButton:
             self.stop_outing()
@@ -870,6 +890,9 @@ class Pet(QWidget):
             self.card.open_card()
 
     def leaveEvent(self, event):
+        self.hover_timer.stop()
+        if self.quick_menu is not None and self.quick_menu.isVisible():
+            self.quick_menu.leave_timer.start()
         self.click_timer.stop()
         self.hover_point = None
         self.stroke_distance = 0
@@ -881,6 +904,7 @@ class Pet(QWidget):
             self.effects.hide()
         if hasattr(self, 'click_timer'):
             self.click_timer.stop()
+            self.hover_timer.stop()
         if getattr(self, 'quick_menu', None) is not None:
             self.quick_menu.hide()
 
@@ -958,11 +982,11 @@ class Pet(QWidget):
         self.hide()
         self.update_tray_visibility()
 
-    def open_pet_menu(self, point):
+    def open_pet_menu(self, point, *, hover=False):
         if self.isVisible():
             if self.quick_menu is None:
                 self.quick_menu = QuickMenu(self)
-            self.quick_menu.open_at(point)
+            self.quick_menu.open_at(point, hover=hover)
 
     def open_controls(self, point=None):
         self.click_timer.stop()

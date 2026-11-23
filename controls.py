@@ -208,6 +208,11 @@ class QuickMenu(DismissibleDialog):
         self.activation_check.setSingleShot(True)
         self.activation_check.timeout.connect(self.dismiss_if_inactive)
 
+        self.leave_timer = QTimer(self)
+        self.leave_timer.setSingleShot(True)
+        self.leave_timer.setInterval(240)
+        self.leave_timer.timeout.connect(self.dismiss_if_pointer_left)
+
         actions = QVBoxLayout(self)
         actions.setContentsMargins(15, 10, 15, 8)
         actions.setSpacing(2)
@@ -221,7 +226,22 @@ class QuickMenu(DismissibleDialog):
             button.setCursor(Qt.PointingHandCursor)
             actions.addWidget(button, 1)
 
-    def open_at(self, point):
+    def enterEvent(self, event):
+        self.leave_timer.stop()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.leave_timer.start()
+        super().leaveEvent(event)
+
+    def dismiss_if_pointer_left(self):
+        if not self.underMouse() and not self.owner.underMouse():
+            self.hide()
+
+    def open_at(self, point, *, hover=False):
+        self.leave_timer.stop()
+        self.activation_check.stop()
+        self.setAttribute(Qt.WA_ShowWithoutActivating, hover)
         self.anchor = point
         screen = QApplication.screenAt(point) or self.owner.screen() or QApplication.primaryScreen()
         area = screen.availableGeometry()
@@ -232,6 +252,8 @@ class QuickMenu(DismissibleDialog):
         position = bounded_position(QPoint(x, point.y() - 10), top_left_bounds(self.rect(), area))
         self.move(position)
         self.show()
+        if hover:
+            return
         self.show_button.setFocus()
         self.activateWindow()
         # Dismiss if the window manager declines activation.
