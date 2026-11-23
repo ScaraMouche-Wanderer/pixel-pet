@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtCore import QEvent, Qt, QPoint, QRect
+from PySide6.QtCore import Qt, QPoint, QRect
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QSystemTrayIcon, QWidget
 from animals import ACTIVITIES, EXTRA_ANIMATIONS, FLYERS, Outing
@@ -29,7 +29,6 @@ class PetTests(unittest.TestCase):
         self.pet.ticker.stop()
 
     def tearDown(self):
-        self.pet.click_timer.stop()
         self.pet.tray.hide()
         self.pet.close()
         self.pet.effects.close()
@@ -81,10 +80,9 @@ class PetTests(unittest.TestCase):
             point = c + QPoint(round(math.sin(a) * 150), round(-math.cos(a) * 150))
             self.assertEqual(p.frame_at(100.5, point), (9 + index // 8, index % 8))
 
-    def test_click_opens_compact_menu_and_show_menu_reuses_a_standalone_window(self):
+    def test_right_click_opens_compact_menu_and_show_menu_reuses_a_standalone_window(self):
         p = self.pet
-        QTest.mouseClick(p, Qt.LeftButton, pos=QPoint(60, 60))
-        QTest.qWait(QApplication.doubleClickInterval() + 50)
+        QTest.mouseClick(p, Qt.RightButton, pos=QPoint(60, 60))
         quick = p.quick_menu
         self.assertTrue(quick.isVisible())
         self.assertFalse(quick.isModal())
@@ -150,12 +148,14 @@ class PetTests(unittest.TestCase):
         self.assertEqual((data['pet'], data['style'], data['size'], data['play_pace']),
                          ('eagle', 'pastel', 192, 'zoomies'))
 
-    def test_leaving_pet_cancels_a_pending_quick_menu(self):
+    def test_hover_and_left_click_keep_quick_menu_closed(self):
         p = self.pet
-        QTest.mouseClick(p, Qt.LeftButton, pos=QPoint(60, 60))
-        self.assertTrue(p.click_timer.isActive())
-        self.app.sendEvent(p, QEvent(QEvent.Leave))
-        self.assertFalse(p.click_timer.isActive())
+        point = p.mask().boundingRect().center()
+        QTest.mouseMove(p, point)
+        QTest.qWait(QApplication.doubleClickInterval() + 50)
+        self.assertIsNone(p.quick_menu)
+        QTest.mouseClick(p, Qt.LeftButton, pos=point)
+        QTest.qWait(QApplication.doubleClickInterval() + 50)
         self.assertIsNone(p.quick_menu)
 
     def test_double_click_jumps_without_opening_a_menu(self):

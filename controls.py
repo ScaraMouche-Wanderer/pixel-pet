@@ -238,10 +238,10 @@ class QuickMenu(DismissibleDialog):
         if not self.underMouse() and not self.owner.underMouse():
             self.hide()
 
-    def open_at(self, point, *, hover=False):
+    def open_at(self, point):
+        self.setAttribute(Qt.WA_ShowWithoutActivating, False)
         self.leave_timer.stop()
         self.activation_check.stop()
-        self.setAttribute(Qt.WA_ShowWithoutActivating, hover)
         self.anchor = point
         screen = QApplication.screenAt(point) or self.owner.screen() or QApplication.primaryScreen()
         area = screen.availableGeometry()
@@ -252,8 +252,6 @@ class QuickMenu(DismissibleDialog):
         position = bounded_position(QPoint(x, point.y() - 10), top_left_bounds(self.rect(), area))
         self.move(position)
         self.show()
-        if hover:
-            return
         self.show_button.setFocus()
         self.activateWindow()
         # Dismiss if the window manager declines activation.

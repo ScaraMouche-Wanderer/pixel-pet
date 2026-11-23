@@ -23,7 +23,7 @@ Pixel Pet keeps its settings and friendship progress in `~/.config/pixel-pet/set
 
 ## Controls
 
-- **Hover over the pet** to see **Hide** and **Show menu**. Move onto the buttons to use them, or move away to dismiss them. Clicking or right-clicking the pet also opens the quick menu. Choose **Hide** to put the pet away. Click the tray icon or run the launcher again to bring it back.
+- **Right-click the pet** to see **Hide** and **Show menu**. Move onto the buttons to use them, or move away to dismiss them. Choose **Hide** to put the pet away. Click the tray icon or run the launcher again to bring it back.
 - **Show menu** opens a compact, zoo-themed controls window with a live habitat preview. Press **Esc** or switch to another window to dismiss either menu. The tray menu also offers **Show menu**.
 - **Appearance** lets you pick Cosmic Cat, Classic Cat, Monkey, Eagle, or Dusk Owl. Set **Colour**, **Size**, and **Speed** in the same tab. The bundled pets offer Original, Pastel, and Moonlight palettes.
 - **Hold** to cuddle, **double-click** to jump, **drag** to reposition, or **middle-click** to open the care card. For a head pat, use **Pet** in the care card.
