@@ -88,6 +88,8 @@ class PetTests(unittest.TestCase):
         quick = p.quick_menu
         self.assertTrue(quick.isVisible())
         self.assertFalse(quick.isModal())
+        self.assertIs(quick.parentWidget(), p)
+        self.assertIs(quick.windowHandle().transientParent(), p.windowHandle())
         self.assertEqual(quick.windowType(), Qt.Dialog)
         self.assertIsNone(QApplication.activePopupWidget())
         self.assertEqual([quick.hide_button.text(), quick.show_button.text()], ['Hide', 'Show menu'])
@@ -98,7 +100,8 @@ class PetTests(unittest.TestCase):
         controls = p.controls
         self.assertTrue(controls.isVisible())
         self.assertFalse(controls.isModal())
-        self.assertIsNone(controls.parent())
+        self.assertIs(controls.parentWidget(), p)
+        self.assertIs(controls.windowHandle().transientParent(), p.windowHandle())
         self.assertEqual(controls.windowType(), Qt.Dialog)
         self.assertEqual(controls.minimumSize(), controls.maximumSize())
         self.assertEqual(controls.tabs.count(), 3)

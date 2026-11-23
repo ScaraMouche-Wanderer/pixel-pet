@@ -171,6 +171,12 @@ class SpritePreview(QWidget):
 class DismissibleDialog(QDialog):
     compact_vines = False
 
+    def showEvent(self, event):
+        # The pet can recreate its native surface when its stacking layer changes.
+        self.winId()
+        self.windowHandle().setTransientParent(self.owner.windowHandle())
+        super().showEvent(event)
+
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
@@ -191,7 +197,7 @@ class QuickMenu(DismissibleDialog):
 
     def __init__(self, owner):
         # A managed dialog can lose focus normally, including to native Wayland windows.
-        super().__init__(None, Qt.Dialog | Qt.FramelessWindowHint)
+        super().__init__(owner, Qt.Dialog | Qt.FramelessWindowHint)
         self.owner = owner
         self.anchor = QPoint()
         self.setObjectName('pixelPetQuickMenu')
@@ -241,7 +247,7 @@ class QuickMenu(DismissibleDialog):
 class ControlsWindow(DismissibleDialog):
     def __init__(self, owner, pets):
         flags = Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowCloseButtonHint
-        super().__init__(None, flags)
+        super().__init__(owner, flags)
         self.owner, self.pets = owner, pets
         self.setObjectName('pixelPetControls')
         self.setWindowTitle('Pixel Pet Zoo')
