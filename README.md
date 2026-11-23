@@ -30,7 +30,7 @@ Pixel Pet keeps its settings and friendship progress in `~/.config/pixel-pet/set
 
 ## Play
 
-In **Play → Animate**, each pet has four exclusive moves. With **Autonomous play** enabled, your pet performs them automatically in shuffled rounds during idle time. **Motion effects** adds animated props, including Seedy’s falling leaves and fruit when its sprite is installed.
+In **Play → Animate**, each pet has four exclusive moves with species-specific wind-ups, gestures, and landings. With **Autonomous play** enabled, your pet performs them automatically in shuffled rounds during idle time. **Motion effects** adds animated props, including Seedy’s falling leaves and fruit when its sprite is installed.
 
 - The cats prowl, stretch, groom, and chase yarn. Monkey climbs, swings, and cartwheels. **Eagle** and **Dusk Owl** use different wingbeats and return to perch after a flight.
 - In **Play**, use **Showtime** for a signature move, **Take flight** for either bird, or **Animate** for specific poses. Turn **Autonomous play** off in **Settings** to control when they move.

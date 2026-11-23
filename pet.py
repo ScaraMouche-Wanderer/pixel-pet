@@ -18,7 +18,8 @@ from PySide6.QtGui import QColor, QCursor, QIcon, QPainter, QPixmap, QRegion, QT
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon
 from animals import (ACTIVITIES, ANIMAL_ROWS, BIRD_ROWS, FLYERS, MONKEY_ROWS,
                      PALETTES, PLAY_PACES, SHOWTIME, STYLES, TRICKS, Outing, animal_frame, owl_frame)
-from pet_moves import MOVES, move_particles
+from body_motion import STEPS, IdleMotion, perform_frames
+from pet_moves import MOVE_DURATION, MOVES, move_particles
 from companion import Companion, voice_for
 from controls import ControlsWindow, QuickMenu
 from habitat import roaming_area
@@ -344,10 +345,14 @@ class Pet(QWidget):
 
     def load_pet(self):
         self.sprites = Sprites(self.settings.data['pet'], self.settings.data['size'], self.settings.data['style'])
-        region = self.sprites.prepare()
+        self.body_frames = None
+        self.body_cache = {}
+        self.rest_mask = self.sprites.prepare()
+        self.idle_motion = IdleMotion(self.sprites)
+        self.rest_mask |= self.idle_motion.envelope
         self.current = self.sprites.frame(0, 0)
         self.setFixedSize(self.sprites.width, self.sprites.height)
-        self.setMask(region)
+        self.setMask(self.rest_mask)
         self.frame_key = None
 
     def select_pet(self, pet):
@@ -541,7 +546,7 @@ class Pet(QWidget):
         if self.settings.data['motion_effects']:
             art = self.mask().boundingRect().translated(self.pos())
             self.effects.particles.extend(move_particles(move, art))
-        self.play(move.pose)
+        self.play(move.pose, performance=move)
 
     def start_showtime(self):
         if self.showtime_label and self.ready_for_trick():
@@ -616,6 +621,7 @@ class Pet(QWidget):
         self.tick()
 
     def stop_toys(self):
+        self.end_performance()
         self.stop_outing(return_to_perch=True)
         self.ball.stop()
         self.firefly.stop()
@@ -694,11 +700,25 @@ class Pet(QWidget):
         self.save_profile()
         self.sync_controls()
 
-    def play(self, mode):
+    def end_performance(self):
+        if self.body_frames is not None:
+            self.body_frames = None
+            self.setMask(self.rest_mask)
+            self.frame_key = None
+
+    def play(self, mode, *, performance=None):
+        self.end_performance()
+        if performance is not None:
+            if performance not in self.body_cache:
+                self.body_cache[performance] = perform_frames(self.sprites, performance)
+            self.body_frames, envelope = self.body_cache[performance]
+            self.setMask(self.rest_mask | envelope)
         self.mode = mode
         self.mode_started = time.monotonic()
         # Use the installed app's exact frame timing and three repetitions.
         self.mode_until = self.mode_started + sum(self.sprites.animations[mode][1]) * 3 / 1000
+        if performance is not None:
+            self.mode_until = self.mode_started + MOVE_DURATION
         self.last_interaction = self.mode_started
         if not self.isVisible():
             self.show_pet()
@@ -837,10 +857,30 @@ class Pet(QWidget):
             lift = self.mode.startswith(('trick-', 'stunt-', 'swing-')) or self.mode == 'jumping'
             self.effects.leave_motion_marks(previous, displacement, airborne=lift)
             self.last_motion_mark = now
-        key = self.frame_at(now, QCursor.pos())
+        if self.body_frames is not None and (now >= self.mode_until or not self.ready_for_trick()
+                                             or self.drag_origin is not None or self.outing is not None):
+            self.end_performance()
+        if self.body_frames is None:
+            row, column = self.frame_at(now, QCursor.pos())
+            key = (row, column)
+            if (row == 0 and now >= self.mode_until and self.ready_for_trick()
+                    and self.drag_origin is None):
+                breath = (0, 1, 2, 3, 4, 4, 3, 2, 1, 0, 0, 0)
+                phase = breath[int(now * 4) % len(breath)]
+                key = ('idle', column, phase)
+        else:
+            step = min(STEPS - 1, max(0, int((now - self.mode_started) * STEPS / MOVE_DURATION)))
+            key = ('performance', step)
+            next_frame = self.mode_started + (step + 1) * MOVE_DURATION / STEPS
+            self._frame_delay_ms = max(1, math.ceil((next_frame - now) * 1000))
         if key != self.frame_key:
             self.frame_key = key
-            self.current = self.sprites.frame(*key)
+            if self.body_frames is not None:
+                self.current = self.body_frames[step]
+            elif key[0] == 'idle':
+                self.current = self.idle_motion.frame(row, column, phase)
+            else:
+                self.current = self.sprites.frame(row, column)
             self.update()
             if self.controls is not None and self.controls.isVisible():
                 self.controls.set_frame(self.current)

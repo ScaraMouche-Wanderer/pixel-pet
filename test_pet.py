@@ -212,6 +212,25 @@ class PetTests(unittest.TestCase):
         self.assertFalse(pet.controls.isVisible())
         self.assertFalse(pet.controls.pointer_watch.isActive())
 
+    def test_body_animation_is_cached_and_restores_the_desktop_shape(self):
+        pet = self.pet
+        pet.select_pet('eagle')
+        move = MOVES['eagle'][0]
+        pet.perform_pet_move(move)
+        frames = pet.body_frames
+        self.assertGreater(len(frames), 20)
+        self.assertNotEqual(frames[0].toImage(), frames[len(frames) // 2].toImage())
+        self.assertTrue(pet.rest_mask.subtracted(pet.mask()).isEmpty())
+        pet.mode_until = 0
+        pet.tick()
+        self.assertIsNone(pet.body_frames)
+        self.assertEqual(pet.mask(), pet.rest_mask)
+        pet.perform_pet_move(move)
+        self.assertIs(frames, pet.body_frames)
+        pet.toggle('paused')
+        self.assertIsNone(pet.body_frames)
+        self.assertEqual(pet.mask(), pet.rest_mask)
+
     def test_double_click_jumps_without_opening_a_menu(self):
         p = self.pet
         QTest.mouseClick(p, Qt.LeftButton, pos=QPoint(60, 60))
