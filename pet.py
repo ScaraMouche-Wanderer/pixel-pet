@@ -276,6 +276,7 @@ class Pet(QWidget):
         self.last_model_tick = 0.
         self.last_chatter = self.last_interaction
         self.follow_until = 0.
+        self.walk_remainder = 0.
         self.last_stroke = 0.
         self.stroke_distance = 0.
         self.hover_point = None
@@ -537,10 +538,10 @@ class Pet(QWidget):
         self.follow_until = 0
         now = time.monotonic()
         self.next_pet_move = now + random.uniform(6, 12) / self.play_pace
-        self.next_outing = max(self.next_outing, now + 3)
+        self.next_outing = max(self.next_outing, now + 3 / self.play_pace)
         if self.settings.data['motion_effects']:
             art = self.mask().boundingRect().translated(self.pos())
-            self.effects.particles.extend(move_particles(move, art))
+            self.effects.particles.extend(move_particles(move, art, self.play_pace))
         self.play(move.pose)
 
     def start_showtime(self):
@@ -674,7 +675,12 @@ class Pet(QWidget):
         dy = top_y - self.y()
         if abs(dx) < 5 and abs(dy) < 5:
             return
-        step = max(1, speed * dt * self.play_pace)
+        distance = speed * dt * self.play_pace + self.walk_remainder
+        pixels = int(distance)
+        self.walk_remainder = distance - pixels
+        if not pixels:
+            return
+        step = pixels
         self.move(self.x() + round(max(-step, min(step, dx))),
                   self.y() + round(max(-step, min(step, dy))))
         self.clamp_position()
@@ -697,8 +703,8 @@ class Pet(QWidget):
     def play(self, mode):
         self.mode = mode
         self.mode_started = time.monotonic()
-        # Use the installed app's exact frame timing and three repetitions.
-        self.mode_until = self.mode_started + sum(self.sprites.animations[mode][1]) * 3 / 1000
+        # Play three cycles at the selected pace.
+        self.mode_until = self.mode_started + sum(self.sprites.animations[mode][1]) * 3 / (1000 * self.play_pace)
         self.last_interaction = self.mode_started
         if not self.isVisible():
             self.show_pet()
@@ -724,8 +730,6 @@ class Pet(QWidget):
             mode, elapsed = 'running', now * 1000
         elif now < self.mode_until:
             mode, elapsed = self.mode, (now - self.mode_started) * 1000
-            if self.outing is not None:
-                elapsed *= self.play_pace
         else:
             mode, elapsed = 'idle', (now - self.mode_until) * 1000
             center = self.geometry().center()
@@ -737,10 +741,10 @@ class Pet(QWidget):
                 direction = round(((math.degrees(math.atan2(dx, -dy)) + 360) % 360) / 22.5) % 16
                 return 9 + direction // 8, direction % 8
         row, durations = self.sprites.animations[mode]
-        progress = elapsed % sum(durations)
+        progress = (max(0., elapsed) * self.play_pace) % sum(durations)
         for column, duration in enumerate(durations):
             if progress < duration:
-                self._frame_delay_ms = max(1, math.ceil(duration - progress))
+                self._frame_delay_ms = max(1, math.ceil((duration - progress) / self.play_pace))
                 return row, column
             progress -= duration
         return row, 0
@@ -819,7 +823,7 @@ class Pet(QWidget):
                 and not self.underMouse() and now - self.last_interaction > 6):
             g = (self.roaming_area if self.settings.data['pet'] in TRICKS
                  else (self.screen() or QApplication.primaryScreen()).availableGeometry())
-            self.roam_offset += 32 * dt
+            self.roam_offset += 32 * dt * self.play_pace
             if self.roam_offset >= 1:
                 step = int(self.roam_offset)
                 self.roam_offset -= step
@@ -1046,6 +1050,11 @@ class Pet(QWidget):
     def set_play_pace(self, pace):
         self.stop_outing(return_to_perch=True)
         self.effects.clear_motion()
+        now = time.monotonic()
+        ratio = self.play_pace / PLAY_PACES[pace][1]
+        if self.mode_until > now:
+            self.mode_started = now - (now - self.mode_started) * ratio
+            self.mode_until = now + (self.mode_until - now) * ratio
         self.settings.data['play_pace'] = pace
         self.next_outing = time.monotonic() + 1.4
         self.settings.save()

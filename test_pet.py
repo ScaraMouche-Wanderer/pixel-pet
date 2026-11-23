@@ -63,11 +63,11 @@ class PetTests(unittest.TestCase):
         p.mode_until = 100
         far = QPoint(-10000, -10000)
         self.assertEqual(p.frame_at(100.0, far), (0, 0))
-        self.assertEqual(p.frame_at(101.7, far), (0, 1))
-        self.assertEqual(p.frame_at(103.1, far), (0, 3))
+        self.assertEqual(p.frame_at(103.4, far), (0, 1))
+        self.assertEqual(p.frame_at(106.2, far), (0, 3))
         p.mode, p.mode_started, p.mode_until = 'waving', 100, 103
-        self.assertEqual(p.frame_at(100.15, far), (3, 1))
-        self.assertEqual(p.frame_at(100.45, far), (3, 3))
+        self.assertEqual(p.frame_at(100.30, far), (3, 1))
+        self.assertEqual(p.frame_at(100.90, far), (3, 3))
 
     @unittest.skipUnless('codex' in PETS, 'Optional local sprite sheet')
     def test_original_sixteen_look_directions(self):

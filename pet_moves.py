@@ -133,12 +133,13 @@ GLYPHS = {
 }
 
 
-def move_particles(move, art):
+def move_particles(move, art, pace):
     """Use desktop coordinates so falling objects stay where they were released."""
     size = max(12, art.height())
+    duration = 2.2 / pace
     return [dict(kind=move.prop, color=move.color, path=move.path, index=i, count=move.count,
                  x=art.center().x(), y=art.top(), origin_x=art.center().x(), origin_y=art.top(),
-                 size=size, phase=random.uniform(-.3, .3), life=2.2, duration=2.2)
+                 size=size, phase=random.uniform(-.3, .3), life=duration, duration=duration)
             for i in range(move.count)]
 
 

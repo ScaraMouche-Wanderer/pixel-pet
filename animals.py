@@ -11,7 +11,7 @@ TRICKS = {'cat': 'Chase yarn', 'cat-classic': 'Chase yarn',
           'owl': 'Take flight', 'hoots': 'Take flight'}
 FLYERS = ('eagle', 'owl', 'hoots')
 SHOWTIME = {'cat': 'Comet pounce', 'monkey': 'Cartwheel dash', 'eagle': 'Sky corkscrew'}
-PLAY_PACES = {'gentle': ('Gentle', .75), 'normal': ('Normal', 1.), 'zoomies': ('Zoomies', 1.28)}
+PLAY_PACES = {'gentle': ('Gentle', .375), 'normal': ('Normal', .5), 'zoomies': ('Zoomies', .64)}
 ACTIVITIES = {
     'cat': ('yarn', 'prowl', 'pounce', 'cat-show', 'cat-stretch', 'cat-groom'),
     'monkey': ('climb', 'scamper', 'hop', 'monkey-show', 'monkey-swing', 'monkey-hang'),
