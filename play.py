@@ -222,9 +222,7 @@ class Effects(QWidget):
         origin = self.art.topLeft() + QPoint(self.art.width() // 2, 24) - self.pos()
         for item in self.particles:
             if 'path' in item:
-                age = item['duration'] - item['life']
-                opacity = min(1., age / .12, item['life'] / .35)
-                p.setOpacity(opacity * opacity * (3 - 2 * opacity))
+                p.setOpacity(min(1., item['life'] / .35))
                 p.drawPixmap(round(item['x']) - self.x(), round(item['y']) - self.y(),
                              prop_sprite(item['kind'], item['color']))
                 p.setOpacity(1.)
