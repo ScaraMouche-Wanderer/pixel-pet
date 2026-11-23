@@ -349,6 +349,8 @@ class Pet(QWidget):
         self.setFixedSize(self.sprites.width, self.sprites.height)
         self.setMask(region)
         self.frame_key = None
+        self.transition_source = None
+        self.display_anchor = self.sprites.masks[0, 0].boundingRect().center()
 
     def select_pet(self, pet):
         self.stop_outing(return_to_perch=True)
@@ -714,6 +716,7 @@ class Pet(QWidget):
             if self.sprites.is_original_animal:
                 return 0, 3
             return (0, 2) if self.sprites.is_cat else (0, 1)
+        rate = 1.
         if self.companion.remaining() > 0:
             if self.sprites.is_original_animal:
                 return 0, 3
@@ -723,9 +726,10 @@ class Pet(QWidget):
                 return 0, 1
             mode, elapsed = 'running', now * 1000
         elif now < self.mode_until:
-            mode, elapsed = self.mode, (now - self.mode_started) * 1000
+            mode, elapsed = self.mode, max(0., now - self.mode_started) * 1000
             if self.outing is not None:
-                elapsed *= self.play_pace
+                rate = self.play_pace
+                elapsed *= rate
         else:
             mode, elapsed = 'idle', (now - self.mode_until) * 1000
             center = self.geometry().center()
@@ -740,10 +744,59 @@ class Pet(QWidget):
         progress = elapsed % sum(durations)
         for column, duration in enumerate(durations):
             if progress < duration:
-                self._frame_delay_ms = max(1, math.ceil(duration - progress))
+                remaining = (duration - progress) / rate
+                if now < self.mode_until:
+                    remaining = min(remaining, (self.mode_until - now) * 1000)
+                self._frame_delay_ms = max(1, math.ceil(remaining))
                 return row, column
             progress -= duration
         return row, 0
+
+    def update_sprite(self, now, key):
+        changed = key != self.frame_key
+        if not changed and self.transition_source is None:
+            return
+        target = self.sprites.frame(*key)
+        anchor = self.sprites.masks[key].boundingRect().center()
+        if changed:
+            if self.frame_key is not None:
+                self.transition_duration = .080 if key[0] != self.frame_key[0] else .045
+                self.transition_started = now
+                self.transition_source = self.current
+                self.transition_anchor = self.display_anchor
+            self.frame_key = key
+
+        if self.settings.data['paused']:
+            self.transition_source = None
+        if self.transition_source is not None:
+            t = min(1., max(0., (now - self.transition_started) / self.transition_duration))
+            if t >= 1:
+                self.transition_source = None
+            elif t > 0:
+                # Align small shifts in the artwork before blending the two poses.
+                # Blend premultiplied pixels so opaque fur stays opaque.
+                weight = t * t * (3 - 2 * t)
+                delta = anchor - self.transition_anchor
+                shift = QPoint(max(-6, min(6, delta.x())), max(-6, min(6, delta.y())))
+                mixed = QPixmap(target.size())
+                mixed.fill(Qt.transparent)
+                painter = QPainter(mixed)
+                painter.setOpacity(1 - weight)
+                painter.drawPixmap(shift * weight, self.transition_source)
+                painter.setCompositionMode(QPainter.CompositionMode_Plus)
+                painter.setOpacity(weight)
+                painter.drawPixmap(shift * (weight - 1), target)
+                painter.end()
+                self.current = mixed
+                self.display_anchor = self.transition_anchor + delta * weight
+        if self.transition_source is None:
+            self.current = target
+            self.display_anchor = anchor
+        else:
+            self._frame_delay_ms = min(16, self._frame_delay_ms)
+        self.update()
+        if self.controls is not None and self.controls.isVisible():
+            self.controls.set_frame(self.current)
 
     def tick(self):
         # A catch or focus completion may start another animation. Never run a
@@ -837,13 +890,7 @@ class Pet(QWidget):
             lift = self.mode.startswith(('trick-', 'stunt-', 'swing-')) or self.mode == 'jumping'
             self.effects.leave_motion_marks(previous, displacement, airborne=lift)
             self.last_motion_mark = now
-        key = self.frame_at(now, QCursor.pos())
-        if key != self.frame_key:
-            self.frame_key = key
-            self.current = self.sprites.frame(*key)
-            self.update()
-            if self.controls is not None and self.controls.isVisible():
-                self.controls.set_frame(self.current)
+        self.update_sprite(now, self.frame_at(now, QCursor.pos()))
         self.effects.tick(dt)
         if now - self.last_saved > 30:
             self.save_profile()

@@ -212,6 +212,32 @@ class PetTests(unittest.TestCase):
         self.assertFalse(pet.controls.isVisible())
         self.assertFalse(pet.controls.pointer_watch.isActive())
 
+    def test_all_pets_transition_from_the_displayed_pixels_and_land_on_original_art(self):
+        p = self.pet
+        for species in PETS:
+            with self.subTest(species=species):
+                p.select_pet(species)
+                idle = (0, 0)
+                jump = (p.sprites.animations['jumping'][0], 1)
+                wave = (p.sprites.animations['waving'][0], 1)
+                p.update_sprite(10., idle)
+                p.update_sprite(11., idle)
+                start = p.current.toImage()
+                p.update_sprite(12., jump)
+                self.assertEqual(p.current.toImage(), start)
+                p.update_sprite(12.04, jump)
+                midway = p.current.toImage()
+                self.assertNotEqual(midway, start)
+                self.assertNotEqual(midway, p.sprites.frame(*jump).toImage())
+                p.update_sprite(12.05, wave)
+                self.assertEqual(p.current.toImage(), midway)
+                p.update_sprite(12.15, wave)
+                self.assertEqual(p.current.toImage(), p.sprites.frame(*wave).toImage())
+                p.update_sprite(13., idle)
+                p.update_sprite(13.1, idle)
+                self.assertEqual(p.current.toImage(), start)
+                self.assertIsNone(p.transition_source)
+
     def test_double_click_jumps_without_opening_a_menu(self):
         p = self.pet
         QTest.mouseClick(p, Qt.LeftButton, pos=QPoint(60, 60))
@@ -771,7 +797,11 @@ class PetTests(unittest.TestCase):
         p.effects.message = ''
         p.effects.particles.clear()
         p.companion.data['sleeping'] = True
-        p.tick()
+        now = time.monotonic()
+        with patch('pet.time.monotonic', return_value=now):
+            p.tick()
+        with patch('pet.time.monotonic', return_value=now + .1):
+            p.tick()
         self.assertEqual(p.ticker.interval(), 200)
 
 
