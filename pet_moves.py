@@ -4,9 +4,6 @@ import random
 from typing import NamedTuple
 
 
-MOVE_DURATION = 2.2
-
-
 class Move(NamedTuple):
     name: str
     pose: str
@@ -51,7 +48,7 @@ MOVES = {
               Move('Ripple rings', 'waiting', 'ring', 'ripple', '#9ceefe', 4)),
     'fireball': (Move('Ember sneeze', 'failed', 'ember', 'shower', '#ff9348', 5),
                  Move('Flame halo', 'jumping', 'flame', 'orbit', '#ffd55e', 4),
-                 Move('Cinder cyclone', 'jumping', 'cinder', 'spiral', '#ffac50', 6),
+                 Move('Cinder cyclone', 'running', 'cinder', 'spiral', '#ffac50', 6),
                  Move('Lava leap', 'jumping', 'lava', 'arc', '#ff694f', 4)),
     'rocky': (Move('Pebble tumble', 'jumping', 'pebble', 'bounce', '#c7a783', 4),
               Move('Crystal glint', 'review', 'crystal', 'pulse', '#c9b0fb'),
@@ -141,7 +138,7 @@ def move_particles(move, art):
     size = max(12, art.height())
     return [dict(kind=move.prop, color=move.color, path=move.path, index=i, count=move.count,
                  x=art.center().x(), y=art.top(), origin_x=art.center().x(), origin_y=art.top(),
-                 size=size, phase=random.uniform(-.3, .3), life=MOVE_DURATION, duration=MOVE_DURATION)
+                 size=size, phase=random.uniform(-.3, .3), life=2.2, duration=2.2)
             for i in range(move.count)]
 
 

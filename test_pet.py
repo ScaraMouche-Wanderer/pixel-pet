@@ -212,43 +212,6 @@ class PetTests(unittest.TestCase):
         self.assertFalse(pet.controls.isVisible())
         self.assertFalse(pet.controls.pointer_watch.isActive())
 
-    def test_performance_matches_entry_pose_and_returns_to_current_idle(self):
-        pet = self.pet
-        pet.settings.data.update(autonomous=False, roam=False)
-        pet.select_pet('cat')
-        pet.show()
-        before = pet.current.toImage()
-        pet.perform_pet_move(MOVES['cat'][0])
-        self.assertEqual(pet.current.toImage(), before)
-        # The last performance step should already show the breathing pose
-        # that the regular renderer will use when the move finishes.
-        end = pet.mode_until
-        with patch('pet.time.monotonic', return_value=end - .002):
-            pet.tick()
-        landing = pet.current.toImage()
-        with patch('pet.time.monotonic', return_value=end):
-            pet.tick()
-        self.assertEqual(pet.current.toImage(), landing)
-
-    def test_body_animation_is_cached_and_restores_the_desktop_shape(self):
-        pet = self.pet
-        pet.select_pet('eagle')
-        move = MOVES['eagle'][0]
-        pet.perform_pet_move(move)
-        frames = pet.body_frames
-        self.assertGreater(len(frames), 20)
-        self.assertNotEqual(frames[0].toImage(), frames[len(frames) // 2].toImage())
-        self.assertTrue(pet.rest_mask.subtracted(pet.mask()).isEmpty())
-        pet.mode_until = 0
-        pet.tick()
-        self.assertIsNone(pet.body_frames)
-        self.assertEqual(pet.mask(), pet.rest_mask)
-        pet.perform_pet_move(move)
-        self.assertIs(frames, pet.body_frames)
-        pet.toggle('paused')
-        self.assertIsNone(pet.body_frames)
-        self.assertEqual(pet.mask(), pet.rest_mask)
-
     def test_double_click_jumps_without_opening_a_menu(self):
         p = self.pet
         QTest.mouseClick(p, Qt.LeftButton, pos=QPoint(60, 60))

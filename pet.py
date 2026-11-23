@@ -13,13 +13,12 @@ import subprocess
 import sys
 import time
 
-from PySide6.QtCore import QSize, Qt, QTimer, QPoint, QRect
+from PySide6.QtCore import Qt, QTimer, QPoint, QRect
 from PySide6.QtGui import QColor, QCursor, QIcon, QPainter, QPixmap, QRegion, QTransform, QImage
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon
 from animals import (ACTIVITIES, ANIMAL_ROWS, BIRD_ROWS, FLYERS, MONKEY_ROWS,
                      PALETTES, PLAY_PACES, SHOWTIME, STYLES, TRICKS, Outing, animal_frame, owl_frame)
-from body_motion import BLEND_STEPS, STEPS, IdleMotion, blend_pose, perform_frames, scale_pixel_art, silhouette_edge
-from pet_moves import MOVE_DURATION, MOVES, move_particles
+from pet_moves import MOVES, move_particles
 from companion import Companion, voice_for
 from controls import ControlsWindow, QuickMenu
 from habitat import roaming_area
@@ -164,14 +163,13 @@ class Sprites:
         key = row, column
         if key not in self.frames:
             raw = self.animal_or_sheet_frame(row, column)
-            frame = scale_pixel_art(raw, QSize(self.width, self.height))
+            frame = raw.scaled(self.width, self.height, Qt.IgnoreAspectRatio, Qt.FastTransformation)
             if (self.is_cat or self.pet == 'hoots') and self.style != 'original':
                 tint = QColor(250, 161, 222, 125) if self.style == 'pastel' else QColor(44, 123, 164, 126)
                 painter = QPainter(frame)
                 painter.setCompositionMode(QPainter.CompositionMode_SourceAtop)
                 painter.fillRect(frame.rect(), tint)
                 painter.end()
-            frame = silhouette_edge(frame)
             self.frames[key] = frame
             self.masks[key] = self.input_region(self.frames[key])
         return self.frames[key]
@@ -346,14 +344,10 @@ class Pet(QWidget):
 
     def load_pet(self):
         self.sprites = Sprites(self.settings.data['pet'], self.settings.data['size'], self.settings.data['style'])
-        self.body_frames = None
-        self.body_cache = {}
-        self.rest_mask = self.sprites.prepare()
-        self.idle_motion = IdleMotion(self.sprites)
-        self.rest_mask |= self.idle_motion.envelope
+        region = self.sprites.prepare()
         self.current = self.sprites.frame(0, 0)
         self.setFixedSize(self.sprites.width, self.sprites.height)
-        self.setMask(self.rest_mask)
+        self.setMask(region)
         self.frame_key = None
 
     def select_pet(self, pet):
@@ -547,7 +541,7 @@ class Pet(QWidget):
         if self.settings.data['motion_effects']:
             art = self.mask().boundingRect().translated(self.pos())
             self.effects.particles.extend(move_particles(move, art))
-        self.play(move.pose, performance=move)
+        self.play(move.pose)
 
     def start_showtime(self):
         if self.showtime_label and self.ready_for_trick():
@@ -622,7 +616,6 @@ class Pet(QWidget):
         self.tick()
 
     def stop_toys(self):
-        self.end_performance()
         self.stop_outing(return_to_perch=True)
         self.ball.stop()
         self.firefly.stop()
@@ -701,34 +694,15 @@ class Pet(QWidget):
         self.save_profile()
         self.sync_controls()
 
-    def end_performance(self):
-        if self.body_frames is not None:
-            self.body_frames = None
-            self.setMask(self.rest_mask)
-            self.frame_key = None
-
-    def play(self, mode, *, performance=None):
-        self.end_performance()
-        if performance is not None:
-            if performance not in self.body_cache:
-                self.body_cache[performance] = perform_frames(self.sprites, performance)
-            self.entry_pose = self.current
-            self.body_frames, envelope = self.body_cache[performance]
-            self.setMask(self.rest_mask | envelope)
+    def play(self, mode):
         self.mode = mode
         self.mode_started = time.monotonic()
         # Use the installed app's exact frame timing and three repetitions.
         self.mode_until = self.mode_started + sum(self.sprites.animations[mode][1]) * 3 / 1000
-        if performance is not None:
-            self.mode_until = self.mode_started + MOVE_DURATION
         self.last_interaction = self.mode_started
         if not self.isVisible():
             self.show_pet()
         self.tick()
-
-    @staticmethod
-    def breath_phase(now):
-        return round(4 - 4 * math.cos(now * math.tau / 3))
 
     def frame_at(self, now, cursor):
         self._frame_delay_ms = 200
@@ -863,39 +837,10 @@ class Pet(QWidget):
             lift = self.mode.startswith(('trick-', 'stunt-', 'swing-')) or self.mode == 'jumping'
             self.effects.leave_motion_marks(previous, displacement, airborne=lift)
             self.last_motion_mark = now
-        if self.body_frames is not None and (now >= self.mode_until or not self.ready_for_trick()
-                                             or self.drag_origin is not None or self.outing is not None):
-            self.end_performance()
-        if self.body_frames is None:
-            row, column = self.frame_at(now, QCursor.pos())
-            key = (row, column)
-            if (row == 0 and now >= self.mode_until and self.ready_for_trick()
-                    and self.drag_origin is None):
-                phase = self.breath_phase(now)
-                self._frame_delay_ms = min(75, self._frame_delay_ms)
-                key = ('idle', column, phase)
-        else:
-            step = min(STEPS - 1, max(0, int((now - self.mode_started) * STEPS / MOVE_DURATION)))
-            key = ('performance', step)
-            next_frame = self.mode_started + (step + 1) * MOVE_DURATION / STEPS
-            self._frame_delay_ms = max(1, math.ceil((next_frame - now) * 1000))
+        key = self.frame_at(now, QCursor.pos())
         if key != self.frame_key:
             self.frame_key = key
-            if self.body_frames is not None:
-                self.current = self.body_frames[step]
-                if step < BLEND_STEPS:
-                    self.current = blend_pose(self.entry_pose, self.current, step / BLEND_STEPS)
-                elif step >= STEPS - BLEND_STEPS:
-                    row, column = self.frame_at(self.mode_until, QCursor.pos())
-                    target = self.sprites.frame(row, column)
-                    if row == 0:
-                        target = self.idle_motion.frame(row, column, self.breath_phase(self.mode_until))
-                    self.current = blend_pose(target, self.current, (STEPS - 1 - step) / BLEND_STEPS)
-                    self._frame_delay_ms = max(1, math.ceil((next_frame - now) * 1000))
-            elif key[0] == 'idle':
-                self.current = self.idle_motion.frame(row, column, phase)
-            else:
-                self.current = self.sprites.frame(row, column)
+            self.current = self.sprites.frame(*key)
             self.update()
             if self.controls is not None and self.controls.isVisible():
                 self.controls.set_frame(self.current)

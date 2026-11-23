@@ -1,5 +1,4 @@
 """Sprite previews and appearance controls for the desktop companion."""
-from body_motion import scale_pixel_art
 from PySide6.QtCore import QPointF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QRadialGradient
 from PySide6.QtWidgets import (
@@ -25,7 +24,7 @@ def portrait_icon(sprites, size):
     bounds = sprites.masks[0, 0].boundingRect()
     if not bounds.isEmpty():
         idle = idle.copy(bounds)
-    sprite = scale_pixel_art(idle, idle.size().scaled(size, Qt.KeepAspectRatio))
+    sprite = idle.scaled(size, Qt.KeepAspectRatio, Qt.FastTransformation)
     portrait = QPixmap(size)
     portrait.fill(Qt.transparent)
 

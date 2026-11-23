@@ -161,10 +161,7 @@ class Effects(QWidget):
         bounds = QRect(origin - QPoint(105, 124), origin + QPoint(105, 36))
         for item in self.particles:
             if 'duration' in item:
-                bounds = bounds.united(QRect(round(item['x']), round(item['y']), 16, 16))
-                if 'path' in item:
-                    for x, y in item.get('trail', ()):
-                        bounds = bounds.united(QRect(x - 1, y - 1, 5, 5))
+                bounds = bounds.united(QRect(round(item['x']), round(item['y']), 14, 14))
         self.bubble = None
         if self.message:
             key = self.message, screen.width()
@@ -187,14 +184,6 @@ class Effects(QWidget):
         for item in self.particles:
             item['life'] -= dt
             if 'path' in item:
-                if item['path'] in ('spiral', 'orbit', 'swoop', 'arc', 'shower', 'ribbon'):
-                    # Keep a few widely spaced positions, independent of frame rate.
-                    slot = int((item['duration'] - item['life']) * 18)
-                    if item.get('trail_slot') != slot:
-                        item['trail_slot'] = slot
-                        if slot:
-                            point = round(item['x'] + 4), round(item['y'] + 4)
-                            item['trail'] = (*item.get('trail', ())[-4:], point)
                 advance_prop(item)
                 continue
             item['x'] += item['vx'] * dt
@@ -233,25 +222,9 @@ class Effects(QWidget):
         origin = self.art.topLeft() + QPoint(self.art.width() // 2, 24) - self.pos()
         for item in self.particles:
             if 'path' in item:
-                fade = min(1., item['life'] / .35)
-                ink = QColor(item['color'])
-                trail = item.get('trail', ())
-                for index, (x, y) in enumerate(trail):
-                    strength = (index + 1) / len(trail)
-                    ink.setAlphaF(.5 * fade * strength)
-                    side = 1 + round(2 * strength)
-                    p.fillRect(x - self.x(), y - self.y(), side, side, ink)
-                p.setOpacity(fade)
-                prop = prop_sprite(item['kind'], item['color'])
-                x, y = round(item['x']) - self.x(), round(item['y']) - self.y()
-                if item['path'] == 'flutter' or item['kind'] in ('petal', 'tuft', 'plume'):
-                    # The thin edge of a turning leaf or a closing wing.
-                    turn = (item['duration'] - item['life']) * 7 + item['index']
-                    width = max(2, round(prop.width() * (.25 + .75 * abs(math.cos(turn)))))
-                    x += (prop.width() - width) // 2
-                    p.drawPixmap(QRect(x, y, width, prop.height()), prop)
-                else:
-                    p.drawPixmap(x, y, prop)
+                p.setOpacity(min(1., item['life'] / .35))
+                p.drawPixmap(round(item['x']) - self.x(), round(item['y']) - self.y(),
+                             prop_sprite(item['kind'], item['color']))
                 p.setOpacity(1.)
                 continue
             shape = PARTICLES[item['kind']]
