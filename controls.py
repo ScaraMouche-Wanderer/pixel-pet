@@ -165,6 +165,7 @@ class SpritePreview(QWidget):
                 source = self.frame.rect()
             size = source.size().scaled(QSize(80, 55), Qt.KeepAspectRatio)
             position = QPoint((self.width() - size.width()) // 2, 57 - size.height())
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
             painter.drawPixmap(QRect(position, size), self.frame, source)
 
 

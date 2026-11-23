@@ -1,9 +1,9 @@
 """Pixel-snapped body animation layered over the pets' original pose frames."""
-from math import cos, pi, sin, tau
+from math import ceil, cos, pi, sin, tau
 from typing import NamedTuple
 
 from PySide6.QtCore import QPoint, QPointF, QRect, Qt
-from PySide6.QtGui import QPainter, QPixmap, QRegion, QTransform
+from PySide6.QtGui import QColor, QPainter, QPixmap, QRegion, QTransform
 
 from pet_moves import MOVE_DURATION
 
@@ -34,11 +34,58 @@ BEATS = {
     'null-signal': (Beat(-.05, .02, -6), Beat(.11, .09, 9, -.07), Beat(-.09, .05, -10), Beat(.03, .03, 3)),
 }
 
-STEPS = 36
+STEPS = 72
+BLEND_STEPS = 4
+
+
+def scale_pixel_art(raw, size):
+    """Reconstruct source pixel cells before filtering fractional coverage."""
+    if raw.size() == size:
+        return raw
+    factor = max(1, ceil(max(size.width() / raw.width(), size.height() / raw.height())))
+    if factor > 1:
+        raw = raw.scaled(raw.size() * factor, Qt.IgnoreAspectRatio, Qt.FastTransformation)
+    return raw.scaled(size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+
+
+def silhouette_edge(frame):
+    """A one-pixel light rim keeps dark outlines readable on dark desktops."""
+    rim = QPixmap(frame.size())
+    rim.fill(Qt.transparent)
+    painter = QPainter(rim)
+    painter.drawPixmap(0, 0, frame)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(rim.rect(), QColor(223, 232, 225, 125))
+    painter.end()
+    result = QPixmap(frame.size())
+    result.fill(Qt.transparent)
+    painter = QPainter(result)
+    for x, y in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        painter.drawPixmap(x, y, rim)
+    painter.drawPixmap(0, 0, frame)
+    painter.end()
+    return result
+
+
+def blend_pose(start, finish, amount):
+    if amount <= 0:
+        return start
+    if amount >= 1:
+        return finish
+    mixed = QPixmap(start.size())
+    mixed.fill(Qt.transparent)
+    painter = QPainter(mixed)
+    painter.setOpacity(1 - amount)
+    painter.drawPixmap(0, 0, start)
+    painter.setCompositionMode(QPainter.CompositionMode_Plus)
+    painter.setOpacity(amount)
+    painter.drawPixmap(0, 0, finish)
+    painter.end()
+    return mixed
 
 
 def body_beat(pet, path, step):
-    times = (0, 7, 15, 23, 29, STEPS - 1)
+    times = (0, 14, 30, 46, 58, STEPS - 1)
     poses = (Beat(), *BEATS[pet], Beat())
     segment = next(i for i, end in enumerate(times[1:]) if step <= end)
     t = (step - times[segment]) / (times[segment + 1] - times[segment])
@@ -51,15 +98,15 @@ def body_beat(pet, path, step):
     elif path in ('arc', 'bounce', 'juggle', 'splash'):
         lift += .07 * abs(sin(tau * phase)) * envelope
     elif path in ('type', 'scan', 'scurry'):
-        x += .035 * (1 if cos(tau * phase * 4) > 0 else -1) * envelope
+        x += .035 * cos(tau * phase * 4) * envelope
     return Beat(x, lift, lean, squash)
 
 
 def body_transform(size, bounds, beat):
     pivot = QPointF(bounds.center().x(), bounds.bottom())
     transform = QTransform()
-    transform.translate(pivot.x() + round(bounds.width() * beat.x),
-                        pivot.y() - round(bounds.height() * beat.lift))
+    transform.translate(pivot.x() + bounds.width() * beat.x,
+                        pivot.y() - bounds.height() * beat.lift)
     transform.rotate(beat.lean)
     transform.scale(1 + beat.squash * .5, 1 - beat.squash)
     transform.translate(-pivot.x(), -pivot.y())
@@ -86,8 +133,8 @@ class IdleMotion:
         for column in range(len(durations)):
             source = sprites.frame(row, column)
             mask = sprites.masks[row, column]
-            for phase in range(5):
-                amount = phase / 4
+            for phase in range(9):
+                amount = phase / 8
                 beat = Beat(0, 0, rest.lean * .18 * amount, rest.squash * .26 * amount)
                 transform = body_transform(source.size(), mask.boundingRect(), beat)
                 self.transforms[column, phase] = transform
@@ -102,6 +149,7 @@ class IdleMotion:
             frame = QPixmap(source.size())
             frame.fill(Qt.transparent)
             painter = QPainter(frame)
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
             painter.setTransform(self.transforms[key])
             painter.drawPixmap(0, 0, source)
             painter.end()
@@ -113,6 +161,7 @@ def perform_frames(sprites, move):
     row, durations = sprites.animations[move.pose]
     frames = []
     envelope = QRegion()
+    previous_column = None
     for step in range(STEPS):
         elapsed = step * MOVE_DURATION * 1000 / (STEPS - 1) % sum(durations)
         column = 0
@@ -126,6 +175,7 @@ def perform_frames(sprites, move):
         frame = QPixmap(source.size())
         frame.fill(Qt.transparent)
         painter = QPainter(frame)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
         painter.setTransform(transform)
         # Stacky's tiers settle a beat apart. The signal pets occasionally
         # slip a horizontal scanline sideways during their main gesture.
@@ -137,10 +187,10 @@ def perform_frames(sprites, move):
                 bottom = bounds.top() + bounds.height() * (tier + 1) // 3
                 shift = round((2 - tier) * bounds.width() * beat.lean / 380)
                 slices.append((QRect(bounds.x(), top, bounds.width(), bottom - top), shift))
-        elif sprites.pet in ('null-signal', 'bsod') and step in (10, 11, 22, 24):
-            top = bounds.top() + bounds.height() * (2 if step < 20 else 4) // 7
+        elif sprites.pet in ('null-signal', 'bsod') and step // 2 in (10, 11, 22, 24):
+            top = bounds.top() + bounds.height() * (2 if step < 40 else 4) // 7
             band = max(1, bounds.height() // 11)
-            shift = round(bounds.width() * (.055 if step % 2 else -.055))
+            shift = round(bounds.width() * (.055 if (step // 2) % 2 else -.055))
             slices = [(QRect(bounds.x(), bounds.y(), bounds.width(), top - bounds.y()), 0),
                       (QRect(bounds.x(), top, bounds.width(), band), shift),
                       (QRect(bounds.x(), top + band, bounds.width(), bounds.bottom() + 1 - top - band), 0)]
@@ -153,6 +203,10 @@ def perform_frames(sprites, move):
         else:
             painter.drawPixmap(0, 0, source)
         painter.end()
+        # Ease across a sprite-sheet cut for at most one display frame.
+        if frames and column != previous_column:
+            frame = blend_pose(frames[-1], frame, .55 + .45 * min(1., elapsed / 30))
+        previous_column = column
         frames.append(frame)
         envelope |= transform.map(mask)
     return frames, envelope

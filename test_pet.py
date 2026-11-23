@@ -212,6 +212,24 @@ class PetTests(unittest.TestCase):
         self.assertFalse(pet.controls.isVisible())
         self.assertFalse(pet.controls.pointer_watch.isActive())
 
+    def test_performance_matches_entry_pose_and_returns_to_current_idle(self):
+        pet = self.pet
+        pet.settings.data.update(autonomous=False, roam=False)
+        pet.select_pet('cat')
+        pet.show()
+        before = pet.current.toImage()
+        pet.perform_pet_move(MOVES['cat'][0])
+        self.assertEqual(pet.current.toImage(), before)
+        # The last performance step should already show the breathing pose
+        # that the regular renderer will use when the move finishes.
+        end = pet.mode_until
+        with patch('pet.time.monotonic', return_value=end - .002):
+            pet.tick()
+        landing = pet.current.toImage()
+        with patch('pet.time.monotonic', return_value=end):
+            pet.tick()
+        self.assertEqual(pet.current.toImage(), landing)
+
     def test_body_animation_is_cached_and_restores_the_desktop_shape(self):
         pet = self.pet
         pet.select_pet('eagle')

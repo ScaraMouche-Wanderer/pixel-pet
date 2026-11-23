@@ -13,12 +13,12 @@ import subprocess
 import sys
 import time
 
-from PySide6.QtCore import Qt, QTimer, QPoint, QRect
+from PySide6.QtCore import QSize, Qt, QTimer, QPoint, QRect
 from PySide6.QtGui import QColor, QCursor, QIcon, QPainter, QPixmap, QRegion, QTransform, QImage
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QSystemTrayIcon
 from animals import (ACTIVITIES, ANIMAL_ROWS, BIRD_ROWS, FLYERS, MONKEY_ROWS,
                      PALETTES, PLAY_PACES, SHOWTIME, STYLES, TRICKS, Outing, animal_frame, owl_frame)
-from body_motion import STEPS, IdleMotion, perform_frames
+from body_motion import BLEND_STEPS, STEPS, IdleMotion, blend_pose, perform_frames, scale_pixel_art, silhouette_edge
 from pet_moves import MOVE_DURATION, MOVES, move_particles
 from companion import Companion, voice_for
 from controls import ControlsWindow, QuickMenu
@@ -164,13 +164,14 @@ class Sprites:
         key = row, column
         if key not in self.frames:
             raw = self.animal_or_sheet_frame(row, column)
-            frame = raw.scaled(self.width, self.height, Qt.IgnoreAspectRatio, Qt.FastTransformation)
+            frame = scale_pixel_art(raw, QSize(self.width, self.height))
             if (self.is_cat or self.pet == 'hoots') and self.style != 'original':
                 tint = QColor(250, 161, 222, 125) if self.style == 'pastel' else QColor(44, 123, 164, 126)
                 painter = QPainter(frame)
                 painter.setCompositionMode(QPainter.CompositionMode_SourceAtop)
                 painter.fillRect(frame.rect(), tint)
                 painter.end()
+            frame = silhouette_edge(frame)
             self.frames[key] = frame
             self.masks[key] = self.input_region(self.frames[key])
         return self.frames[key]
@@ -711,6 +712,7 @@ class Pet(QWidget):
         if performance is not None:
             if performance not in self.body_cache:
                 self.body_cache[performance] = perform_frames(self.sprites, performance)
+            self.entry_pose = self.current
             self.body_frames, envelope = self.body_cache[performance]
             self.setMask(self.rest_mask | envelope)
         self.mode = mode
@@ -723,6 +725,10 @@ class Pet(QWidget):
         if not self.isVisible():
             self.show_pet()
         self.tick()
+
+    @staticmethod
+    def breath_phase(now):
+        return round(4 - 4 * math.cos(now * math.tau / 3))
 
     def frame_at(self, now, cursor):
         self._frame_delay_ms = 200
@@ -865,8 +871,8 @@ class Pet(QWidget):
             key = (row, column)
             if (row == 0 and now >= self.mode_until and self.ready_for_trick()
                     and self.drag_origin is None):
-                breath = (0, 1, 2, 3, 4, 4, 3, 2, 1, 0, 0, 0)
-                phase = breath[int(now * 4) % len(breath)]
+                phase = self.breath_phase(now)
+                self._frame_delay_ms = min(75, self._frame_delay_ms)
                 key = ('idle', column, phase)
         else:
             step = min(STEPS - 1, max(0, int((now - self.mode_started) * STEPS / MOVE_DURATION)))
@@ -877,6 +883,15 @@ class Pet(QWidget):
             self.frame_key = key
             if self.body_frames is not None:
                 self.current = self.body_frames[step]
+                if step < BLEND_STEPS:
+                    self.current = blend_pose(self.entry_pose, self.current, step / BLEND_STEPS)
+                elif step >= STEPS - BLEND_STEPS:
+                    row, column = self.frame_at(self.mode_until, QCursor.pos())
+                    target = self.sprites.frame(row, column)
+                    if row == 0:
+                        target = self.idle_motion.frame(row, column, self.breath_phase(self.mode_until))
+                    self.current = blend_pose(target, self.current, (STEPS - 1 - step) / BLEND_STEPS)
+                    self._frame_delay_ms = max(1, math.ceil((next_frame - now) * 1000))
             elif key[0] == 'idle':
                 self.current = self.idle_motion.frame(row, column, phase)
             else:
