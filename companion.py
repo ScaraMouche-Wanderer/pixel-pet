@@ -70,16 +70,6 @@ VOICES = {
 }
 
 PET_DIALOGUE = {
-    'owl': dict(
-        name='Dusk', hello='A little owl, right on time for twilight.',
-        pet='Soft feathers make good company.', treat='A tiny midnight snack. Thank you!',
-        cuddle='Come sit under my wing.', jump='Up with the evening breeze!',
-        nap='Tucking in for a quiet perch break.', wake='Feathers fluffed. Ready to fly.',
-        idle=('I like how quiet the sky gets at dusk.', 'I can hear the breeze from here.'),
-        focus='{minutes} minutes. I’ll keep a quiet watch.', follow='I’ll flutter along after you.',
-        rename='I’ll remember that name at twilight.', finish='Time to rest those eyes.',
-        moods=('Keeping a quiet watch', 'Sleeping on a perch', 'Ready to fold its wings',
-               'Looking for a midnight snack', 'Softly hooting', 'Listening for the evening breeze')),
     'cat-classic': dict(
         hello='Mew! Is that a sunbeam over there?', pet='Yes, under the chin please.',
         treat='A little fish for a very good tabby.', cuddle='I fit right here. Purr.',
@@ -216,21 +206,27 @@ class Companion:
             return words[0]
         if d['sleeping']:
             return words[1]
-        if d['energy'] < 25:
+        # Show a tired or hungry cue a little before the meters run low, so the
+        # card reads as a warning rather than a report of something already gone.
+        if d['energy'] < 30:
             return words[2]
-        if d['fullness'] < 30:
+        if d['fullness'] < 35:
             return words[3]
-        return words[4] if d['affection'] >= 75 else words[5]
+        return words[4] if d['affection'] >= 70 else words[5]
 
     def tick(self, now=None):
         now = time.time() if now is None else now
         # Absence never severely penalizes the pet; offline changes are capped.
         hours = min(4., max(0., now - self.data['last_updated']) / 3600)
         self.data['last_updated'] = now
-        self.data['fullness'] = max(0., self.data['fullness'] - 4 * hours)
-        self.data['affection'] = max(0., self.data['affection'] - 2 * hours)
+        # A napping pet keeps its warmth: it wakes hungry, but never lonely.
+        sleeping = self.data['sleeping']
+        self.data['fullness'] = max(0., self.data['fullness'] -
+                                    (1.5 if sleeping else 4) * hours)
+        self.data['affection'] = max(0., self.data['affection'] -
+                                     (0 if sleeping else 2) * hours)
         self.data['energy'] = max(0., min(100., self.data['energy'] +
-                                          (20 if self.data['sleeping'] else -3) * hours))
+                                          (20 if sleeping else -3) * hours))
         if self.data['focus_until'] is not None and now >= self.data['focus_until']:
             self.data['focus_until'] = None
             self.data['focus_sessions'] += 1

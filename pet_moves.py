@@ -133,6 +133,26 @@ GLYPHS = {
 }
 
 
+def _clamp01(t):
+    return 0. if t <= 0 else 1. if t >= 1 else t
+
+
+def _smooth(t):
+    """Ease in and out, so props leave and arrive without a visible snap."""
+    t = _clamp01(t)
+    return t * t * (3 - 2 * t)
+
+
+def _ease_out(t):
+    t = _clamp01(t)
+    return 1 - (1 - t) ** 3
+
+
+def _ease_in(t):
+    t = _clamp01(t)
+    return t * t
+
+
 def move_particles(move, art, pace):
     """Use desktop coordinates so falling objects stay where they were released."""
     size = max(12, art.height())
@@ -145,48 +165,79 @@ def move_particles(move, art, pace):
 
 def advance_prop(item):
     i, count = item['index'], item['count']
-    t = 1 - item['life'] / item['duration']
+    t = _clamp01(1 - item['life'] / item['duration'])
     spread = (i + .5) / count * 2 - 1
     angle = math.tau * (t + i / count)
     phase = item['phase']
     size = item['size']
     path = item['path']
     if path == 'flutter':
-        x, y = spread * .55 + .18 * math.sin(angle * 2 + phase), -.14 + t * 1.15
+        # Drift slowly at first, then settle as the prop reaches the floor.
+        ease = _smooth(t)
+        sway = math.sin(angle * 2 + phase) * (.16 * (1 - .5 * ease))
+        x = spread * .55 * ease + sway
+        y = -.14 + ease * 1.15 + .04 * math.sin(angle * 3 + phase) * (1 - ease)
     elif path == 'drop':
-        x = spread * (.45 + .65 * t) + phase * .12
+        ease = _ease_in(t)
+        x = spread * (.45 + .65 * ease) + phase * .12 * ease
         y = min(.98, .07 + 2.7 * max(0, t - .18 * i) ** 2)
     elif path == 'bounce':
-        x, y = spread * .4 + t * (.75 + phase), .94 - abs(math.sin(t * math.pi * 3)) * (1 - t)
+        ease = _smooth(t)
+        x = spread * .4 * ease + ease * (.75 + phase)
+        y = .94 - abs(math.sin(t * math.pi * 3)) * (1 - t)
     elif path == 'orbit':
-        x, y = .68 * math.cos(angle), .28 + .45 * math.sin(angle)
+        # Grow into the orbit instead of popping on at full radius.
+        radius = .55 + .45 * _ease_out(t)
+        x, y = .68 * radius * math.cos(angle), .28 + .45 * radius * math.sin(angle)
     elif path == 'juggle':
-        x, y = .55 * math.cos(angle), .48 - abs(math.sin(angle)) * .95
+        lift = .6 + .4 * _ease_out(t)
+        x, y = .55 * lift * math.cos(angle), .48 - abs(math.sin(angle)) * .95 * lift
     elif path == 'splash':
-        x, y = spread * t * 1.5, .8 - 3.7 * t * (1 - t)
+        x, y = spread * _smooth(t) * 1.5, .8 - 3.7 * t * (1 - t)
     elif path == 'shower':
-        x, y = spread * .65 + .75 * t, -.35 + 1.25 * t * t + phase
+        ease = _ease_in(t)
+        x = spread * .65 + .75 * ease + phase * .05
+        y = -.35 + 1.25 * ease + phase
     elif path == 'rise':
-        x, y = spread * .6 + .12 * math.sin(angle), .58 - t + phase
+        ease = _ease_out(t)
+        x = spread * .6 * ease + .12 * math.sin(angle) * (1 - .5 * ease)
+        y = .58 - ease + phase * (1 - ease)
     elif path == 'pulse':
-        x, y = .22 + t * .8 + spread * .2, .25 + spread * (.15 + t * .5)
+        ease = _ease_out(t)
+        x = .22 + ease * .8 + spread * .2 * ease
+        y = .25 + spread * (.15 + ease * .5)
     elif path == 'type':
-        x, y = -.4 + i * .25, -.18 - .12 * math.sin(min(1, max(0, 4 * t - i * .45)) * math.pi)
+        beat = _clamp01(4 * t - i * .45)
+        x, y = -.4 + i * .25, -.18 - .12 * math.sin(beat * math.pi)
     elif path == 'spiral':
-        radius = .12 + .66 * t
-        x, y = radius * math.cos(2 * angle), .52 - t * .62 + radius * .45 * math.sin(2 * angle)
+        ease = _smooth(t)
+        radius = .12 + .66 * ease
+        spiral = 2 * math.tau * (ease + i / count)
+        x = radius * math.cos(spiral)
+        y = .52 - ease * .62 + radius * .45 * math.sin(spiral)
     elif path == 'arc':
-        x, y = (t - .5) * 1.6 + spread * .3, .74 - (1 - (2 * t - 1) ** 2) * (.65 + i * .09)
+        ease = _smooth(t)
+        x = (ease - .5) * 1.6 + spread * .3
+        y = .74 - (1 - (2 * ease - 1) ** 2) * (.65 + i * .09)
     elif path == 'scurry':
-        x, y = (t - .5) * 1.8 + spread * .25, .88 - .12 * abs(math.sin(3 * angle))
+        ease = _ease_out(t)
+        x = (ease - .5) * 1.8 + spread * .25
+        y = .88 - .12 * abs(math.sin(3 * angle)) * (1 - ease)
     elif path == 'ribbon':
-        x, y = (t - .5) * 1.4 + spread * .4, .14 + .20 * math.sin(2 * angle)
+        ease = _smooth(t)
+        x = (ease - .5) * 1.4 + spread * .4
+        y = .14 + .20 * math.sin(2 * angle) * (.4 + .6 * ease)
     elif path == 'swoop':
-        x, y = (t - .5) * 1.5 + spread * .3, -.12 + .92 * math.sin(math.pi * t)
+        ease = _smooth(t)
+        x = (ease - .5) * 1.5 + spread * .3
+        y = -.12 + .92 * math.sin(math.pi * ease)
     elif path == 'scan':
-        x, y = .65 * math.sin(2 * math.pi * t), .04 + i * .21
+        ease = _ease_out(t)
+        x, y = .65 * math.sin(2 * math.pi * ease), .04 + i * .21
     elif path == 'ripple':
-        x, y = spread * (.1 + 1.1 * t), .87 + .08 * math.cos(angle + t * 8)
+        ease = _ease_out(t)
+        x = spread * (.1 + 1.1 * ease)
+        y = .87 + .08 * math.cos(angle + ease * 8)
     else:  # stack
         x, y = .48, min(.9 - i * .15, -.45 + 3 * max(0, t - i * .12) ** 2)
     item['x'] = item['origin_x'] + x * size

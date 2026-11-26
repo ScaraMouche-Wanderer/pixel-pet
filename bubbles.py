@@ -21,8 +21,6 @@ PALETTES = {
                        ('#25243f', '#9f96d5', '#a5efd8'))),
     'eagle': (FEATHER, (('#1b2b3a', '#89b9d6', '#ffd398'), ('#303045', '#b6adda', '#ffd7c2'),
                         ('#182b44', '#8db5e8', '#ffdc97'))),
-    'owl': (FEATHER, (('#253932', '#82b49b', '#ffe1a9'), ('#3f2b45', '#d4a5c7', '#fbdebe'),
-                      ('#26334b', '#93aacd', '#c0eddf'))),
     'mascot': (STAR, (('#292637', '#b9a5f5', '#ffe6a7'),) * 3),
 }
 STYLE_INDEX = {'original': 0, 'pastel': 1, 'night': 2}

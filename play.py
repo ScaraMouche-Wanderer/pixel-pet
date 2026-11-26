@@ -22,7 +22,7 @@ FEATHER = ('00011', '00110', '01100', '11000', '10000')
 DUST = ('010', '111', '010')
 PARTICLES = {'heart': HEART, 'fish': FISH, 'banana': BANANA, 'star': STAR,
              'leaf': LEAF, 'feather': FEATHER, 'dust': DUST}
-MOTION_MARKS = {'monkey': 'leaf', 'eagle': 'feather', 'owl': 'feather', 'hoots': 'feather'}
+MOTION_MARKS = {'monkey': 'leaf', 'eagle': 'feather', 'hoots': 'feather'}
 FIREFLY = ['000010000', '000111000', '101111101', '011111110', '001111100',
            '011010110', '100010001']
 PET_SURFACE_FLAGS = Qt.FramelessWindowHint | Qt.Tool | Qt.WindowDoesNotAcceptFocus
@@ -87,6 +87,8 @@ class Effects(QWidget):
         self.bubble_text = None
         self.theme_key = None
         self.art = QRect()
+        self.content_area = QRect()
+        self.pending_repaint = QRect()
         self.last_phase = -1
         self.last_owner_geometry = None
 
@@ -94,22 +96,22 @@ class Effects(QWidget):
         if self.owner.isVisible() and not self.isVisible():
             self.show()
 
-    def hide(self):
-        if self.isVisible():
-            super().hide()
-            # Recreate the native surface so XWayland reapplies its layer on the next show.
-            self.destroy(True, False)
-
     def clear(self):
         self.message = ''
         self.particles.clear()
         self.bubble = None
-        self.hide()
+        painted = self.pending_repaint.united(self.content_area)
+        self.content_area = QRect()
+        self.pending_repaint = QRect()
+        if self.isVisible():
+            self.repaint(painted)
+            self.hide()
 
     def clear_motion(self):
         self.particles = [item for item in self.particles if 'duration' not in item]
         if self.isVisible():
-            self.update()
+            self.anchor()
+            self.redraw()
 
     def leave_motion_marks(self, previous, delta, airborne=False, finale=False):
         if not self.owner.settings.data['motion_effects']:
@@ -135,7 +137,7 @@ class Effects(QWidget):
         self.message_until = time.monotonic() + seconds
         self.anchor()
         self.ensure_visible()
-        self.update()
+        self.redraw()
 
     def burst(self, kind='heart', count=7):
         for i in range(count):
@@ -147,7 +149,7 @@ class Effects(QWidget):
                                    else random.choice(['#c4afff', '#ffe1a0', '#93e6d5'])})
         self.anchor()
         self.ensure_visible()
-        self.update()
+        self.redraw()
         self.owner.wake_animation()
 
     def anchor(self):
@@ -161,7 +163,7 @@ class Effects(QWidget):
         bounds = QRect(origin - QPoint(105, 124), origin + QPoint(105, 36))
         for item in self.particles:
             if 'duration' in item:
-                bounds = bounds.united(QRect(round(item['x']), round(item['y']), 14, 14))
+                bounds = bounds.united(QRect(math.floor(item['x']), math.floor(item['y']), 16, 16))
         self.bubble = None
         if self.message:
             key = self.message, screen.width()
@@ -170,13 +172,21 @@ class Effects(QWidget):
                 self.bubble_text = fit_text(self.message, screen.width())
             self.bubble = bubble_position(self.art, screen, self.bubble_text)
             bounds = bounds.united(self.bubble[0].adjusted(-2, -9, 5, 11))
-        bounds = bounds.intersected(screen)
-        if bounds.isEmpty():
-            bounds = QRect(screen.left(), screen.top(), 1, 1)
-        if self.geometry() == bounds:
-            return False
-        self.setGeometry(bounds)
-        return True
+        # Moving and resizing a translucent native window on every animation
+        # frame can briefly expose an unpainted buffer on XWayland. Keep the
+        # surface fixed to the current display and damage only the drawn area.
+        changed_screen = self.geometry() != screen
+        if changed_screen:
+            self.setGeometry(screen)
+        current = bounds.intersected(screen).translated(-screen.topLeft())
+        self.pending_repaint = self.pending_repaint.united(self.content_area).united(current)
+        self.content_area = current
+        return changed_screen
+
+    def redraw(self):
+        if not self.pending_repaint.isEmpty():
+            self.update(self.pending_repaint)
+            self.pending_repaint = QRect()
 
     def tick(self, dt):
         now = time.monotonic()
@@ -198,7 +208,7 @@ class Effects(QWidget):
         phase_changed = phase != self.last_phase
         self.last_phase = phase
         if self.particles or self.message or (resting and not self.owner.settings.data['paused']):
-            moved = self.anchor()
+            changed_screen = self.anchor()
             owner_geometry = self.owner.geometry()
             owner_moved = owner_geometry != self.last_owner_geometry
             self.last_owner_geometry = owner_geometry
@@ -207,15 +217,17 @@ class Effects(QWidget):
             self.theme_key = theme_key
             was_hidden = not self.isVisible()
             self.ensure_visible()
-            if had_particles or expired or phase_changed or moved or owner_moved or was_hidden or theme_changed:
-                self.update()
+            if had_particles or expired or phase_changed or changed_screen or owner_moved or was_hidden or theme_changed:
+                self.redraw()
         elif self.isVisible():
-            self.hide()
+            self.clear()
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setCompositionMode(QPainter.CompositionMode_Source)
-        p.fillRect(self.rect(), Qt.transparent)
+        p.fillRect(event.rect(), Qt.transparent)
+        if self.content_area.isEmpty():
+            return
         p.setCompositionMode(QPainter.CompositionMode_SourceOver)
         p.setRenderHint(QPainter.Antialiasing, False)
         theme = theme_for(self.owner.settings.data['pet'], self.owner.settings.data['style'])
@@ -668,8 +680,7 @@ class PetCard(QWidget):
             value = round(d[key])
             title.setText(f'{text} {value}%')
             meter.setValue(value)
-        place = {'monkey': 'Edge climber', 'eagle': 'Glider', 'owl': 'Night flyer', 'hoots': 'Night flyer'}.get(
-            pet[0], f"Yarn catches {d['catches']}")
+        place = {'monkey': 'Edge climber', 'eagle': 'Glider'}.get(pet[0], f"Yarn catches {d['catches']}")
         self.record.setText(f"Pets {d['pets']} · {place}\n"
                             f"Hunts won {d['firefly_rounds']} · Focus sessions {d['focus_sessions']}")
         self.nap_button.setText('Wake up' if d['sleeping'] else 'Take a nap')

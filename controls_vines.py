@@ -8,6 +8,8 @@ from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 def _leaf(painter, start, tip, width, color):
     direction = tip - start
     size = math.hypot(direction.x(), direction.y())
+    if size <= 1e-6:
+        return
     normal = QPointF(-direction.y(), direction.x()) * (width / size)
     shape = QPainterPath(start)
     shape.cubicTo(start + direction * .23 + normal,
@@ -21,6 +23,13 @@ def _twig(painter, start, end):
     shape = QPainterPath(start)
     shape.quadTo(QPointF(start.x(), end.y()), end)
     painter.drawPath(shape)
+
+
+def _bud(painter, x, y):
+    painter.setBrush(QColor('#c4a461'))
+    painter.drawEllipse(QPointF(x, y), 1.5, 1.5)
+    painter.setBrush(QColor('#ead38c'))
+    painter.drawEllipse(QPointF(x - .35, y - .35), .6, .6)
 
 
 def _corner(painter, span, trail):
@@ -55,9 +64,25 @@ def _corner(painter, span, trail):
         _leaf(painter, QPointF(*start), QPointF(*tip), width, color)
 
     painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor('#c4a461'))
     for x, y in ((span * .38, 8), (10, trail * .53), (9, trail * .86)):
-        painter.drawEllipse(QPointF(x, y), 1.4, 1.4)
+        _bud(painter, x, y)
+
+
+def _bottom_sprig(painter, height):
+    """Draw a minimal corner leaf accent within the outer 10 px dialog margin."""
+    stem = QPainterPath(QPointF(4, height - 34))
+    stem.cubicTo(6, height - 20, 3, height - 10, 15, height - 4)
+    painter.setPen(QPen(QColor('#4d7446'), 1.15, Qt.SolidLine, Qt.RoundCap))
+    painter.setBrush(Qt.NoBrush)
+    painter.drawPath(stem)
+    for start, tip, width, color in (
+        ((5, height - 27), (10, height - 22), 1.8, '#699d62'),
+        ((4, height - 16), (9, height - 11), 2.0, '#588c5e'),
+        ((10, height - 6), (17, height - 5), 1.7, '#79a76a'),
+    ):
+        _leaf(painter, QPointF(*start), QPointF(*tip), width, color)
+    painter.setPen(Qt.NoPen)
+    _bud(painter, 15, height - 4)
 
 
 def paint_vines(painter, rect, *, compact=False):
@@ -73,7 +98,11 @@ def paint_vines(painter, rect, *, compact=False):
     painter.setClipRect(area, Qt.IntersectClip)
     painter.translate(area.left() + 1, area.top() + 1)
     _corner(painter, span, trail)
+    if not compact and area.height() >= 220:
+        _bottom_sprig(painter, area.height() - 2)
     painter.translate(area.width() - 2, 0)
     painter.scale(-1, 1)
     _corner(painter, span, trail * .86)
+    if not compact and area.height() >= 220:
+        _bottom_sprig(painter, area.height() - 2)
     painter.restore()

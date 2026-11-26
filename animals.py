@@ -4,19 +4,18 @@ import random
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPixmap, QPolygon
+from habitat import bounded_position, top_left_bounds
 
 STYLES = {'original': 'Original', 'pastel': 'Pastel', 'night': 'Moonlight'}
 TRICKS = {'cat': 'Chase yarn', 'cat-classic': 'Chase yarn',
-          'monkey': 'Climb an edge', 'eagle': 'Take flight',
-          'owl': 'Take flight', 'hoots': 'Take flight'}
-FLYERS = ('eagle', 'owl', 'hoots')
+          'monkey': 'Climb an edge', 'eagle': 'Take flight', 'hoots': 'Take flight'}
+FLYERS = ('eagle', 'hoots')
 SHOWTIME = {'cat': 'Comet pounce', 'monkey': 'Cartwheel dash', 'eagle': 'Sky corkscrew'}
 PLAY_PACES = {'gentle': ('Gentle', .375), 'normal': ('Normal', .5), 'zoomies': ('Zoomies', .64)}
 ACTIVITIES = {
     'cat': ('yarn', 'prowl', 'pounce', 'cat-show', 'cat-stretch', 'cat-groom'),
     'monkey': ('climb', 'scamper', 'hop', 'monkey-show', 'monkey-swing', 'monkey-hang'),
     'eagle': ('eagle-flight', 'swoop', 'hop', 'eagle-show', 'bird-preen'),
-    'owl': ('owl-flight', 'bird-preen', 'hop'),
     'hoots': ('hoots-flight', 'bird-preen', 'hop'),
 }
 IDLE_MOVES = {'cat-stretch': ('stretch', 1.55), 'cat-groom': ('groom', 1.9),
@@ -56,7 +55,6 @@ EXTRA_ANIMATIONS = {
     'cat': (('stretch', 'Stretch'), ('groom', 'Groom')),
     'monkey': (('swing-right', 'Swing'), ('tail-hang', 'Hang by the tail')),
     'eagle': (('trick-flap-right', 'Flap wings'), ('preen', 'Preen feathers')),
-    'owl': (('trick-flap-right', 'Flutter wings'), ('preen', 'Preen feathers')),
     'hoots': (('trick-flap-right', 'Flutter wings'), ('preen', 'Preen feathers')),
 }
 PALETTES = {
@@ -69,11 +67,6 @@ PALETTES = {
         'original': ('#382b38', '#645047', '#947158', '#fff0d9', '#ee9b53', '#f3bc55'),
         'pastel': ('#413f63', '#6c6796', '#9291c5', '#faf1fc', '#dc8da2', '#ffbd76'),
         'night': ('#222a44', '#344a73', '#5878a2', '#cfe9ff', '#8eb9f4', '#ffcd7f'),
-    },
-    'owl': {
-        'original': ('#233941', '#315966', '#639091', '#f1dda5', '#e5a86b', '#f9c963'),
-        'pastel': ('#493651', '#765579', '#ab85a9', '#ffe5cc', '#eba3ac', '#f5ca83'),
-        'night': ('#242b49', '#3b4c77', '#6885a9', '#c5e6e6', '#d5a9c6', '#f4c782'),
     },
 }
 
@@ -103,8 +96,6 @@ def animal_frame(animal, style, row, column):
         row = 8
     if animal == 'monkey':
         draw_monkey(painter, colors, row, column)
-    elif animal == 'owl':
-        draw_dusk_owl(painter, colors, row, column)
     else:
         draw_eagle(painter, colors, row, column)
     painter.end()
@@ -253,56 +244,6 @@ def draw_eagle(p, colors, row, col):
     p.fillRect(26, 16, 3, 1, blush)
 
 
-def draw_dusk_owl(p, colors, row, col):
-    ink, shade, plumage, face, blush, gold = colors
-    phase = (row - 12) // 2 if 12 <= row < 20 else None
-    moving = row in (1, 2, 4)
-    preening = row == 20
-    if moving:
-        p.translate(0, -(0, 2, 4, 1)[col])
-    if phase is not None:
-        wing_y = ((11, 4, 23, 12), (11, 13, 10, 13),
-                  (3, 13, 24, 10), (8, 12, 19, 24))[phase][col]
-        bend = (0, 1, 2, 0)[col]
-        for mirror in (False, True):
-            p.save()
-            if mirror:
-                p.translate(40, 0)
-                p.scale(-1, 1)
-            poly(p, ink, (18, 21), (13, wing_y + 2), (2, wing_y), (1, wing_y + 4),
-                 (5, wing_y + 10), (10, wing_y + 10 + bend), (15, wing_y + 15), (20, 31))
-            poly(p, plumage, (17, 21), (12, wing_y + 4), (3, wing_y + 2), (5, wing_y + 8),
-                 (10, wing_y + 9 + bend), (15, wing_y + 13), (19, 28))
-            p.fillRect(5, wing_y + 5, 7, 1, face)
-            p.restore()
-    ellipse(p, ink, 9, 14, 22, 22)
-    ellipse(p, shade, 10, 15, 20, 20)
-    ellipse(p, plumage, 13, 18, 14, 16)
-    p.fillRect(16, 27, 8, 1, face)
-    p.fillRect(18, 29, 4, 1, face)
-    if phase is None or phase == 3:
-        foot = (0, 1, 0, -1)[col] if moving else 0
-        for x in (13 + foot, 23 - foot):
-            p.fillRect(x, 33, 5, 3, ink)
-            p.fillRect(x + 1, 34, 4, 1, gold)
-    if preening:
-        p.translate((0, -2, -3, 0)[col], (0, 1, 3, 1)[col])
-    poly(p, ink, (8, 13), (8, 5), (13, 8), (17, 7), (23, 7), (27, 8),
-         (32, 5), (32, 13), (33, 17), (30, 22), (25, 24), (15, 24), (9, 21), (7, 17))
-    poly(p, plumage, (9, 13), (9, 7), (13, 10), (17, 8), (23, 8), (27, 10),
-         (31, 7), (31, 13), (32, 17), (29, 21), (24, 23), (16, 23), (10, 20), (8, 17))
-    ellipse(p, face, 10, 11, 10, 11)
-    ellipse(p, face, 20, 11, 10, 11)
-    eyes_closed = (row == 0 and col in (2, 3)) or row in (5, 7) or (preening and col in (1, 2))
-    for x in (14, 23):
-        p.fillRect(x, 14, 3, 1 if eyes_closed else 4, ink)
-        if not eyes_closed:
-            p.fillRect(x + 1, 14, 1, 1, QColor('#fff9e7'))
-    p.fillRect(11, 19, 3, 1, blush)
-    p.fillRect(26, 19, 3, 1, blush)
-    poly(p, gold, (18, 17), (22, 17), (20, 21))
-
-
 def owl_frame(body, row, column):
     """Animate a copy of the supplied owl frame with new pixel wing poses."""
     image = QImage(48, 52, QImage.Format_ARGB32_Premultiplied)
@@ -337,16 +278,18 @@ def owl_frame(body, row, column):
 
 
 class Outing:
-    """A randomized route with the original perch as the last waypoint."""
-    def __init__(self, activity, geometry, available, now, pace=1.):
+    """A timed route for a desk activity or a walk to a new spot."""
+    def __init__(self, activity, geometry, available, now, pace=1., *, pet=None, facing='right'):
         self.activity = activity
-        self.origin = geometry.topLeft()
+        self.bounds = top_left_bounds(geometry, available)
+        self.origin = bounded_position(geometry.topLeft(), self.bounds)
         self.started = now
+        if activity == 'wander':
+            self.legs = self.wander_legs(pet, facing)
+            self._set_pace(pace)
+            return
         x, y = self.origin.x(), self.origin.y()
-        left, top = available.left(), available.top()
-        right = max(left, available.right() - geometry.width() + 1)
-        bottom = max(top, available.bottom() - geometry.height() + 1)
-        self.bounds = (left, top, right, bottom)
+        left, top, right, bottom = self.bounds
         self.hop_height = random.randint(13, 29)
         side = 'left' if x - left <= right - x else 'right'
         if abs((x - left) - (right - x)) <= 140:
@@ -397,13 +340,45 @@ class Outing:
                 second.setY(bottom - round((bottom - top) * .20))
             self.legs = self.travel((first, second, self.origin), 'trick-',
                                     random.uniform(280, 430) if activity == 'swoop' else random.uniform(155, 230))
+        self._set_pace(pace)
+
+    def _set_pace(self, pace):
         self.legs = [(point, duration / pace, mode) for point, duration, mode in self.legs]
         self.duration = sum(leg[1] for leg in self.legs)
+
+    def wander_legs(self, pet, facing):
+        left, top, right, bottom = self.bounds
+        start = self.origin
+        minimum = min(180, max(right - left, bottom - top) / 3)
+        for _ in range(8):
+            target = QPoint(random.randint(left, right), random.randint(top, bottom))
+            if (target - start).manhattanLength() > minimum:
+                break
+        else:
+            corners = (QPoint(x, y) for x in (left, right) for y in (top, bottom))
+            target = max(corners, key=lambda point: (point - start).manhattanLength())
+        if target == start:
+            return [(start, 1., 'waiting')]
+        delta = target - start
+        if delta.x():
+            facing = 'right' if delta.x() > 0 else 'left'
+        distance = math.hypot(delta.x(), delta.y())
+        if pet in FLYERS:
+            lift = random.randint(65, 120)
+            rise = min(start.y(), target.y()) - top >= lift
+            bend = -lift if rise else lift
+            takeoff = bounded_position(start + delta * .22 + QPoint(0, bend), self.bounds)
+            approach = bounded_position(start + delta * .79 + QPoint(0, bend), self.bounds)
+            cruise = 'flap' if pet == 'hoots' else 'glide'
+            return [(takeoff, .63, 'trick-takeoff-' + facing),
+                    (approach, max(.62, distance / 320), 'trick-' + cruise + '-' + facing),
+                    (target, .69, 'trick-land-' + facing)]
+        return [(target, max(.48, distance / random.uniform(145, 185)), 'running-' + facing)]
 
     def flight(self, activity, top, bottom, right, left):
         x, y = self.origin.x(), self.origin.y()
         side = 1 if right - x >= x - left else -1
-        owl = activity in ('owl-flight', 'hoots-flight')
+        owl = activity == 'hoots-flight'
         distance = min(right - x if side > 0 else x - left,
                        random.randint(350, 530) if owl else random.randint(530, 790))
         altitude = max(top + 8, y - (random.randint(145, 245) if owl else random.randint(225, 360)))
@@ -419,7 +394,7 @@ class Outing:
             (self.origin, .2, 'waiting'),
             (takeoff, .54, 'trick-takeoff-' + outward),
             (far, max(.85, distance / (230 if owl else 315)), 'trick-' + cruise + '-' + outward),
-            (far, .24, 'trick-flap-' + homeward),
+            (far, .24, 'trick-flap-' + outward),
             (approach, max(.85, distance / (245 if owl else 335)), 'trick-' + cruise + '-' + homeward),
             (self.origin, .57, 'trick-land-' + homeward),
         ]
@@ -456,11 +431,22 @@ class Outing:
 
     def sample(self, now):
         elapsed = max(0., now - self.started)
+        if elapsed >= self.duration:
+            return self.legs[-1][0], None
         start = self.origin
-        for end, duration, mode in self.legs:
+        for index, (end, duration, mode) in enumerate(self.legs):
             if elapsed < duration:
                 f = elapsed / duration
                 travel = .55 * f + .45 * f * f * (3 - 2 * f)
+                # Ease to a stop at reversals and landings without braking at
+                # every waypoint on a continuous flight.
+                previous = self.legs[index - 2][0] if index > 1 else self.origin
+                following = self.legs[index + 1][0] if index + 1 < len(self.legs) else end
+                movement = end - start
+                if QPoint.dotProduct(movement, start - previous) <= 0:
+                    travel -= .55 * f * (1 - f) ** 2
+                if QPoint.dotProduct(movement, following - end) <= 0:
+                    travel += .55 * f * f * (1 - f)
                 x = round(start.x() + (end.x() - start.x()) * travel)
                 y = round(start.y() + (end.y() - start.y()) * travel)
                 if mode == 'jumping':
@@ -471,8 +457,7 @@ class Outing:
                     y -= round(45 * math.sin(math.pi * f))
                 elif mode.startswith(('trick-glide-', 'trick-flap-')):
                     y -= round(12 * math.sin(math.pi * f))
-                left, top, right, bottom = self.bounds
-                return QPoint(max(left, min(right, x)), max(top, min(bottom, y))), mode
+                return bounded_position(QPoint(x, y), self.bounds), mode
             start = end
             elapsed -= duration
-        return self.origin, None
+        return self.legs[-1][0], None

@@ -21,20 +21,13 @@ from animals import (ACTIVITIES, ANIMAL_ROWS, BIRD_ROWS, FLYERS, MONKEY_ROWS,
 from pet_moves import MOVES, move_particles
 from companion import Companion, voice_for
 from controls import ControlsWindow, QuickMenu
-from habitat import roaming_area
+from habitat import bounded_position, nearby_play_area, top_left_bounds
 from play import Effects, Firefly, PetCard, YarnBall, PET_SURFACE_FLAGS, set_pet_layer
 
 ROOT = Path(__file__).resolve().parent
-ASSETS = ROOT / 'assets'
-LOCAL_MASCOTS = {'hoots': 'Hoots (Owl)', 'codex': 'Codex', 'dewey': 'Dewey', 'fireball': 'Fireball',
-                 'rocky': 'Rocky', 'seedy': 'Seedy', 'stacky': 'Stacky', 'bsod': 'BSOD',
-                 'null-signal': 'Null Signal'}
-LOCAL_SHEETS = {
-    key: files[0] for key in LOCAL_MASCOTS
-    if (files := sorted(ASSETS.glob(f'{key}-spritesheet-*.webp')))
-}
 PETS = {'cat': 'Cosmic Cat', 'cat-classic': 'Classic Cat', 'monkey': 'Monkey', 'eagle': 'Eagle',
-        'owl': 'Dusk Owl', **{key: label for key, label in LOCAL_MASCOTS.items() if key in LOCAL_SHEETS}}
+        'hoots': 'Hoots (Owl)', 'codex': 'Codex', 'dewey': 'Dewey', 'fireball': 'Fireball',
+        'rocky': 'Rocky', 'seedy': 'Seedy', 'stacky': 'Stacky', 'bsod': 'BSOD', 'null-signal': 'Null Signal'}
 ROWS = {'idle': (0, [1680, 660, 660, 840, 840, 1920]),
         'running-right': (1, [120] * 7 + [220]),
         'running-left': (2, [120] * 7 + [220]),
@@ -51,14 +44,13 @@ CAT_ROWS = {'idle': (0, [2400, 500, 140, 2000]),
             'waving': (2, [180, 180, 240, 180]), 'jumping': (3, [160, 160, 220, 180]),
             'failed': (0, [200, 200, 350, 200]), 'waiting': (0, [900, 400, 200, 900]),
             'running': (1, [160] * 4), 'review': (2, [180, 180, 240, 180])}
-DEFAULTS = {'pet': 'cat', 'size': 160, 'position': None, 'paused': False, 'roam': False,
+DEFAULTS = {'pet': 'cat', 'size': 160, 'position': None, 'paused': False, 'roam': True,
             'chatty': True, 'always_on_top': False, 'autonomous': True, 'style': 'original',
             'motion_effects': True, 'play_pace': 'normal', 'appearance_revision': 2}
 MENU_STYLE = '''
-QMenu { background: #202127; color: #eeeef1; border: 1px solid #474952; border-radius: 8px; padding: 5px; font-size: 12px; }
-QMenu::item { padding: 7px 24px; border-radius: 4px; }
-QMenu::item:selected { background: #414451; }
-QMenu::separator { height: 1px; background: #42434c; margin: 5px; }
+QMenu { background: #192438; color: #edf5ff; border: 1px solid #47647d; border-radius: 8px; padding: 5px; font-size: 13px; }
+QMenu::item { padding: 8px 25px; border-radius: 4px; }
+QMenu::item:selected { color: #e7fffb; background: #244851; }
 '''
 
 
@@ -70,12 +62,8 @@ class Settings:
         try:
             saved = json.loads(self.path.read_text())
             if isinstance(saved, dict):
-                pet = saved.get('pet')
-                if isinstance(pet, str):
-                    if pet in PETS:
-                        self.data['pet'] = pet
-                    elif pet == 'hoots':
-                        self.data['pet'] = 'owl'
+                if isinstance(saved.get('pet'), str) and saved['pet'] in PETS:
+                    self.data['pet'] = saved['pet']
                 if saved.get('size') in (96, 128, 160, 192):
                     self.data['size'] = saved['size']
                 if isinstance(saved.get('style'), str) and saved['style'] in STYLES:
@@ -128,9 +116,9 @@ class Sprites:
             self.width = self.height = width
             return
         if self.is_cat:
-            sheet_path = ASSETS / ('cat-cosmic.png' if pet == 'cat' else 'cat.png')
+            sheet_path = ROOT / 'assets' / ('cat-cosmic.png' if pet == 'cat' else 'cat.png')
         else:
-            sheet_path = LOCAL_SHEETS[pet]
+            sheet_path = next((ROOT / 'assets').glob(pet + '-spritesheet-*.webp'))
         self.sheet = QPixmap(str(sheet_path))
         if self.sheet.isNull():
             raise ValueError(f'Invalid pet sheet: {sheet_path}')
@@ -261,11 +249,11 @@ class Pet(QWidget):
         self._frame_delay_ms = 100
         self._updating = False
         self.current = None
-        self.direction = 1
-        self.roam_offset = 0.0
+        self.facing = 'right'
         self.last_tick = time.monotonic()
         self.last_interaction = time.monotonic()
         self.next_outing = self.last_interaction + 1.8
+        self.next_walk = self.last_interaction + 2.0
         self.next_pet_move = self.last_interaction + random.uniform(3, 6)
         self.last_motion_mark = 0.
         self.move_queue = []
@@ -408,13 +396,13 @@ class Pet(QWidget):
 
     def clamp_position(self):
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
-        g = screen.availableGeometry()
-        self.move(max(g.left(), min(self.x(), g.right() - self.width() + 1)),
-                  max(g.top(), min(self.y(), g.bottom() - self.height() + 1)))
+        point = bounded_position(self.pos(), top_left_bounds(self.geometry(), screen.availableGeometry()))
+        if point != self.pos():
+            self.move(point)
 
     def recenter_roaming_area(self):
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
-        self.roaming_area = roaming_area(self.geometry(), screen.availableGeometry())
+        self.roaming_area = screen.availableGeometry()
 
     def adjust_to_screens(self):
         self.stop_toys()
@@ -485,7 +473,8 @@ class Pet(QWidget):
         self.settings.data['paused'] = False
         self.follow_until = 0
         self.firefly.stop()
-        self.ball.launch(arena=self.roaming_area if self.sprites.is_cat else None)
+        self.recenter_roaming_area()
+        self.ball.launch(arena=nearby_play_area(self.geometry(), self.roaming_area) if self.sprites.is_cat else None)
         self.effects.say('Toss it! You can grab the yarn.')
         self.last_interaction = time.monotonic()
         self.save_profile()
@@ -560,46 +549,55 @@ class Pet(QWidget):
         if activity is None:
             activity = self.next_activity(self.animal) if automatic else ACTIVITIES[self.animal][0]
         self.next_outing = now + random.uniform(1.4, 4.9) / self.play_pace
-        if not self.roaming_area.contains(self.geometry()):
-            self.recenter_roaming_area()
+        self.recenter_roaming_area()
+        nearby = nearby_play_area(self.geometry(), self.roaming_area)
         if activity == 'yarn':
             if automatic:
-                self.ball.launch(quiet=True, arena=self.roaming_area)
+                self.ball.launch(quiet=True, arena=nearby)
             else:
                 self.start_yarn()
             return
         self.card.hide()
         self.stop_toys()
         self.follow_until = 0
-        bounds = self.roaming_area
-        if activity == 'climb' or activity.endswith('-flight'):
-            screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
-            bounds = screen.availableGeometry()
+        bounds = self.roaming_area if activity == 'climb' or activity.endswith('-flight') else nearby
         self.outing = Outing(activity, self.geometry(), bounds, now, pace=self.play_pace)
         self.wake_animation()
 
     def stop_outing(self, return_to_perch=False):
         if self.outing is not None:
-            if return_to_perch:
+            if return_to_perch and self.outing.activity != 'wander':
                 self.move(self.outing.origin)
                 self.clamp_position()
             self.outing = None
             self.mode_until = 0
 
     def advance_outing(self, now):
+        activity = self.outing.activity
         point, mode = self.outing.sample(now)
         if point != self.pos():
             self.move(point)
         if mode is None:
-            if self.outing.activity.endswith('-show'):
+            if activity.endswith('-show'):
                 self.effects.leave_motion_marks(point, QPoint(), finale=True)
             self.clamp_position()
             self.stop_outing()
-            self.next_outing = now + random.uniform(1.1, 4.7) / self.play_pace
+            if activity == 'wander':
+                self.mode_until = now
+                self.next_walk = now + random.uniform(.40, 1.15) / self.play_pace
+            else:
+                self.next_outing = now + random.uniform(1.1, 4.7) / self.play_pace
         else:
-            if self.mode != mode or now >= self.mode_until:
-                self.mode_started = now
-            self.mode, self.mode_until = mode, now + .30
+            self.set_motion_mode(mode, now)
+
+    def set_motion_mode(self, mode, now):
+        motion, _, direction = mode.rpartition('-')
+        if direction in ('left', 'right'):
+            self.facing = direction
+        same_step = direction in ('left', 'right') and self.mode in (motion + '-left', motion + '-right')
+        if now >= self.mode_until or (self.mode != mode and not same_step):
+            self.mode_started = now
+        self.mode, self.mode_until = mode, now + .30
 
     def start_fireflies(self):
         self.card.hide()
@@ -671,8 +669,10 @@ class Pet(QWidget):
         self.sync_controls()
 
     def walk_towards(self, center_x, top_y, dt, speed=112):
-        dx = center_x - self.geometry().center().x()
-        dy = top_y - self.y()
+        offset_x = self.geometry().center().x() - self.x()
+        target = bounded_position(QPoint(center_x - offset_x, top_y),
+                                  top_left_bounds(self.geometry(), self.roaming_area))
+        dx, dy = target.x() - self.x(), target.y() - self.y()
         if abs(dx) < 5 and abs(dy) < 5:
             return
         distance = speed * dt * self.play_pace + self.walk_remainder
@@ -680,14 +680,14 @@ class Pet(QWidget):
         self.walk_remainder = distance - pixels
         if not pixels:
             return
-        step = pixels
-        self.move(self.x() + round(max(-step, min(step, dx))),
-                  self.y() + round(max(-step, min(step, dy))))
-        self.clamp_position()
-        mode = 'running-right' if dx > 0 else 'running-left'
-        if self.mode != mode or time.monotonic() > self.mode_until:
-            self.mode_started = time.monotonic()
-        self.mode, self.mode_until = mode, time.monotonic() + .15
+        fraction = min(1., pixels / math.hypot(dx, dy))
+        step = QPoint(round(dx * fraction) if abs(dx) >= 5 else 0, round(dy * fraction))
+        if step.isNull():
+            return
+        self.move(self.pos() + step)
+        if step.x():
+            self.facing = 'right' if step.x() > 0 else 'left'
+        self.set_motion_mode('running-' + self.facing, time.monotonic())
 
     def stop_play(self):
         self.stop_toys()
@@ -725,7 +725,7 @@ class Pet(QWidget):
                 return 0, 3
             if self.sprites.is_cat:
                 return 0, 2
-            if self.animal in ('owl', 'hoots'):
+            if self.animal == 'hoots':
                 return 0, 1
             mode, elapsed = 'running', now * 1000
         elif now < self.mode_until:
@@ -819,22 +819,12 @@ class Pet(QWidget):
         elif (self.settings.data['autonomous'] and self.settings.data['pet'] in TRICKS
               and can_move and now >= self.next_outing and now - self.last_interaction >= 1):
             self.perform_trick(now, automatic=True)
-        elif (self.settings.data['roam'] and can_move
-                and not self.underMouse() and now - self.last_interaction > 6):
-            g = (self.roaming_area if self.settings.data['pet'] in TRICKS
-                 else (self.screen() or QApplication.primaryScreen()).availableGeometry())
-            self.roam_offset += 32 * dt * self.play_pace
-            if self.roam_offset >= 1:
-                step = int(self.roam_offset)
-                self.roam_offset -= step
-                x = max(g.left(), min(self.x() + self.direction * step, g.right() - self.width() + 1))
-                self.move(x, self.y())
-            if self.x() <= g.left() + 2 or self.x() + self.width() >= g.right() - 2:
-                self.direction *= -1
-            self.mode = 'running-right' if self.direction > 0 else 'running-left'
-            if now > self.mode_until:
-                self.mode_started = now
-            self.mode_until = now + .15
+        elif (self.settings.data['roam'] and can_move and now >= max(self.next_walk, self.mode_until)
+                and not self.underMouse() and now - self.last_interaction >= 2):
+            self.recenter_roaming_area()
+            self.outing = Outing('wander', self.geometry(), self.roaming_area, now,
+                                 pace=self.play_pace, pet=self.animal, facing=self.facing)
+            self.advance_outing(now)
         displacement = self.pos() - previous
         if (can_move and self.mode_until > now and displacement.manhattanLength() > 0
                 and self.settings.data['motion_effects'] and now - self.last_motion_mark >= .13):
@@ -860,9 +850,7 @@ class Pet(QWidget):
                 now - self.last_chatter > 150):
             self.last_chatter = now
             self.effects.say(random.choice(self.voice['idle']))
-        moving = can_move and (self.outing is not None or self.ball.active or self.follow_until > now or
-                                (not self.firefly.active and self.settings.data['roam'] and
-                                 now - self.last_interaction > 6))
+        moving = can_move and (self.outing is not None or self.ball.active or self.follow_until > now)
         fast_effects = bool(self.effects.particles) or (self.ball.active and not self.settings.data['paused'])
         interval = 16 if moving or fast_effects or self.drag_origin is not None else min(200, self._frame_delay_ms)
         if self.ticker.interval() != interval:
@@ -871,11 +859,9 @@ class Pet(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setCompositionMode(QPainter.CompositionMode_Source)
-        painter.fillRect(self.rect(), Qt.transparent)
-        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
         painter.setRenderHint(QPainter.SmoothPixmapTransform, False)
-        if self.current is not None:
-            painter.drawPixmap(0, 0, self.current)
+        # Copy the full frame, including transparent pixels, in one paint pass.
+        painter.drawPixmap(0, 0, self.current)
 
     def enterEvent(self, event):
         super().enterEvent(event)
@@ -1026,9 +1012,13 @@ class Pet(QWidget):
         if key == 'autonomous':
             self.next_outing = time.monotonic() + 1.8
             if not self.settings.data[key]:
-                self.stop_outing(return_to_perch=True)
+                if self.outing is not None and self.outing.activity != 'wander':
+                    self.stop_outing(return_to_perch=True)
                 if self.ball.active and self.ball.quiet:
                     self.ball.stop()
+        if key == 'roam' and not self.settings.data['roam']:
+            if self.outing is not None and self.outing.activity == 'wander':
+                self.stop_outing()
         if key == 'always_on_top':
             for widget in (self, self.effects, self.ball, self.firefly):
                 set_pet_layer(widget, self.settings.data[key])
@@ -1063,12 +1053,7 @@ class Pet(QWidget):
     def set_autostart(self, checked):
         if checked:
             self.autostart_path.parent.mkdir(parents=True, exist_ok=True)
-            command = ' '.join(desktop_argument(path) for path in (sys.executable, ROOT / 'pet.py'))
-            self.autostart_path.write_text(
-                '[Desktop Entry]\nType=Application\nName=Pixel Pet\n'
-                f'Exec={command}\nIcon={ROOT / "icon.png"}\n'
-                'Terminal=false\nCategories=Utility;\nStartupNotify=false\n'
-            )
+            self.autostart_path.write_text((ROOT / 'pixel-pet.desktop').read_text())
         else:
             self.autostart_path.unlink(missing_ok=True)
         self.sync_controls()
@@ -1097,12 +1082,6 @@ class Pet(QWidget):
         self.ticker.stop()
         self.hold_timer.stop()
         super().closeEvent(event)
-
-
-def desktop_argument(value):
-    value = str(value).replace('%', '%%')
-    escaped = ''.join('\\' + char if char in '\\"$`' else char for char in value)
-    return '"' + escaped.replace('\\', '\\\\') + '"'
 
 
 def main():

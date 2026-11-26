@@ -1,7 +1,4 @@
 #!/bin/sh
-set -eu
-project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-if [ -x "$project_dir/.venv/bin/python" ]; then
-    exec "$project_dir/.venv/bin/python" "$project_dir/pet.py" "$@"
-fi
-exec python3 "$project_dir/pet.py" "$@"
+cd /home/voidnode/Projects/pixel-pet || exit 1
+export QT_QPA_PLATFORM=xcb
+exec /usr/bin/python /home/voidnode/Projects/pixel-pet/pet.py "$@"

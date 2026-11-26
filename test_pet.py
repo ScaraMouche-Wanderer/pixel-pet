@@ -56,7 +56,6 @@ class PetTests(unittest.TestCase):
                     sprites.frame(row, column)
                     self.assertFalse(sprites.masks[row, column].isEmpty(), (pet, row, column))
 
-    @unittest.skipUnless('codex' in PETS, 'Optional local sprite sheet')
     def test_frame_timings_match_idle_and_wave(self):
         p = self.pet
         p.select_pet('codex')
@@ -69,7 +68,6 @@ class PetTests(unittest.TestCase):
         self.assertEqual(p.frame_at(100.30, far), (3, 1))
         self.assertEqual(p.frame_at(100.90, far), (3, 3))
 
-    @unittest.skipUnless('codex' in PETS, 'Optional local sprite sheet')
     def test_original_sixteen_look_directions(self):
         import math
         p = self.pet
@@ -103,7 +101,8 @@ class PetTests(unittest.TestCase):
         self.assertIs(controls.windowHandle().transientParent(), p.windowHandle())
         self.assertEqual(controls.windowType(), Qt.Dialog)
         self.assertEqual(controls.minimumSize(), controls.maximumSize())
-        self.assertEqual(controls.tabs.count(), 3)
+        self.assertEqual([controls.tabs.tabText(i) for i in range(controls.tabs.count())],
+                         ['Appearance', 'Play', 'Settings'])
         QTest.keyClick(controls, Qt.Key_Escape)
         self.assertFalse(controls.isVisible())
         self.assertTrue(p.isVisible())
@@ -112,26 +111,21 @@ class PetTests(unittest.TestCase):
         self.assertTrue(controls.isVisible())
         self.assertFalse(controls.isMaximized())
 
-    def test_menus_dismiss_when_focus_moves_to_another_window(self):
+    def test_controls_dismiss_when_focus_moves_to_another_window(self):
         p = self.pet
         other = QWidget()
         try:
-            for name, open_menu in (('quick_menu', lambda: p.open_pet_menu(p.geometry().center())),
-                                    ('controls', p.open_controls)):
-                with self.subTest(menu=name):
-                    open_menu()
-                    QTest.qWait(25)
-                    menu = getattr(p, name)
-                    self.assertTrue(menu.isActiveWindow())
-                    other.show()
-                    other.activateWindow()
-                    QTest.qWait(25)
-                    self.assertTrue(other.isActiveWindow())
-                    self.assertFalse(menu.isVisible())
-                    open_menu()
-                    QTest.qWait(25)
-                    self.assertTrue(menu.isActiveWindow())
-                    menu.close()
+            p.open_controls()
+            QTest.qWait(25)
+            self.assertTrue(p.controls.isActiveWindow())
+            other.show()
+            other.activateWindow()
+            QTest.qWait(25)
+            self.assertTrue(other.isActiveWindow())
+            self.assertFalse(p.controls.isVisible())
+            p.open_controls()
+            QTest.qWait(25)
+            self.assertTrue(p.controls.isActiveWindow())
         finally:
             other.close()
 
@@ -232,6 +226,7 @@ class PetTests(unittest.TestCase):
         self.assertFalse(quick.isVisible())
         self.assertFalse(any(widget.isVisible() for widget in (p, p.effects, p.ball, p.firefly, p.card)))
         self.assertFalse(p.firefly.active)
+        self.assertTrue(p.settings.data['roam'])
         self.assertEqual([action.text() for action in p.tray_menu.actions() if action.isVisible()],
                          ['Show pet', 'Bring pet home', 'Quit'])
 
@@ -249,11 +244,11 @@ class PetTests(unittest.TestCase):
 
     def test_pet_size_pause_and_settings_persist(self):
         p = self.pet
-        p.select_pet('eagle')
+        p.select_pet('dewey')
         p.resize_pet(96)
         p.toggle('paused')
         saved = Settings(self.settings.path)
-        self.assertEqual(saved.data['pet'], 'eagle')
+        self.assertEqual(saved.data['pet'], 'dewey')
         self.assertEqual(saved.data['size'], 96)
         self.assertTrue(saved.data['paused'])
         self.assertEqual(p.frame_at(time.monotonic(), QPoint()), (0, 0))
@@ -346,17 +341,17 @@ class PetTests(unittest.TestCase):
                 lines = [voice_for(pet)[moment] for pet in PETS]
                 self.assertEqual(len(set(lines)), len(PETS))
 
-    def test_owl_keeps_its_head_pat_line_on_level_up_and_switching_replaces_it(self):
+    def test_bsod_keeps_its_head_pat_line_on_level_up_and_switching_replaces_it(self):
         pet = self.pet
-        pet.select_pet('owl')
+        pet.select_pet('bsod')
         pet.companion.data['xp'] = 28
         pet.interact('pet')
-        self.assertTrue(pet.effects.message.startswith('Soft feathers make good company.'))
+        self.assertTrue(pet.effects.message.startswith('Head pat logged. Blue screen happy.'))
         self.assertIn('Friendship level 2', pet.effects.message)
-        pet.select_pet('cat-classic')
+        pet.select_pet('stacky')
         self.assertEqual(pet.effects.message, '')
         pet.interact('pet')
-        self.assertEqual(pet.effects.message, 'Yes, under the chin please.')
+        self.assertEqual(pet.effects.message, 'That pat traveled down the whole stack.')
 
     def test_autonomous_routes_need_no_scenery_window(self):
         p = self.pet
@@ -370,11 +365,78 @@ class PetTests(unittest.TestCase):
         self.assertIsNone(p.outing)
         self.assertTrue(p.roaming_area.contains(p.geometry()))
 
+    def test_every_pet_can_roam_to_distant_spots_across_the_display(self):
+        screen = QRect(-1920, -150, 1920, 1050)
+        origin = QRect(-1820, 690, 160, 175)
+        destinations = [QPoint(-220, -100), QPoint(-700, 200), QPoint(-1550, 110)]
+        for animal in PETS:
+            for target in destinations:
+                with self.subTest(animal=animal, target=target), \
+                        patch('animals.random.randint', side_effect=[target.x(), target.y(), 90]):
+                    route = Outing('wander', origin, screen, 0, pet=animal)
+                    samples = [route.sample(route.duration * (step / 80)) for step in range(81)]
+                    self.assertEqual(samples[0][0], origin.topLeft())
+                    self.assertEqual(samples[-1], (target, None))
+                    self.assertTrue(all(screen.contains(QRect(point, origin.size())) for point, _ in samples))
+                    self.assertTrue(all(mode.endswith('-right') for _, mode in samples[:-1] if mode))
+                    if animal in FLYERS:
+                        self.assertIn('trick-takeoff-right', [mode for _, mode in samples])
+                        self.assertIn('trick-land-right', [mode for _, mode in samples])
+                    else:
+                        self.assertEqual({mode for _, mode in samples[:-1]}, {'running-right'})
+
+    def test_walk_switch_starts_new_paths_and_stops_in_place(self):
+        p = self.pet
+        p.select_pet('codex')
+        p.show()
+        self.settings.data.update(roam=True, autonomous=False)
+        clock = [time.monotonic() + 5]
+        p.next_walk = clock[0]
+        with patch('time.monotonic', side_effect=lambda: clock[0]), patch.object(p, 'underMouse', return_value=False):
+            p.mode_until = clock[0] + .25
+            p.tick()
+            self.assertIsNone(p.outing)
+            clock[0] += .3
+            p.tick()
+            first = p.outing
+            self.assertEqual(first.activity, 'wander')
+            clock[0] += first.duration + .01
+            p.tick()
+            self.assertIsNone(p.outing)
+            self.assertEqual(p.pos(), first.legs[-1][0])
+            self.assertNotEqual(p.pos(), first.origin)
+            clock[0] = p.next_walk + .01
+            p.tick()
+            second = p.outing
+            self.assertEqual(second.origin, first.legs[-1][0])
+            clock[0] += second.duration * .6
+            p.tick()
+            current = p.pos()
+            p.toggle('roam')
+            self.assertIsNone(p.outing)
+            self.assertEqual(p.pos(), current)
+
+    def test_turn_keeps_stride_phase_and_vertical_steps_keep_facing(self):
+        p = self.pet
+        p.move(p.roaming_area.center() - QPoint(100, 40))
+        clock = [1000.]
+        with patch('time.monotonic', side_effect=lambda: clock[0]):
+            p.set_motion_mode('running-right', clock[0])
+            clock[0] += .17
+            before = p.frame_at(clock[0], QPoint())
+            p.walk_towards(p.geometry().center().x() - 50, p.y(), .04)
+            after = p.frame_at(clock[0], QPoint())
+            self.assertNotEqual(before[0], after[0])
+            self.assertEqual(before[1], after[1])
+            for offset in (-1, 0, 1, -2, 2):
+                clock[0] += .04
+                p.walk_towards(p.geometry().center().x() + offset, p.y() - 50, .04)
+                self.assertEqual(p.mode, 'running-left')
+            self.assertEqual(p.mode_started, 1000.)
+
     def test_auto_activity_cycles_vary_and_do_not_repeat_back_to_back(self):
         p = self.pet
         for pet, activities in ACTIVITIES.items():
-            if pet not in PETS:
-                continue
             p.select_pet(pet)
             choices = [p.next_activity(pet) for _ in range(5 * len(activities))]
             self.assertEqual(choices[0], activities[0])
@@ -464,7 +526,7 @@ class PetTests(unittest.TestCase):
 
     def test_both_birds_take_off_fly_and_land_on_the_same_screen(self):
         p = self.pet
-        for bird in (key for key in FLYERS if key in PETS):
+        for bird in FLYERS:
             with self.subTest(bird=bird):
                 p.select_pet(bird)
                 p.home()
@@ -478,7 +540,7 @@ class PetTests(unittest.TestCase):
                 self.assertTrue(all(screen.contains(QRect(point, p.size())) for point, _ in frames))
                 self.assertGreater(max(abs(point.x() - origin.x()) for point, _ in frames), 200)
                 self.assertGreater(max(origin.y() - point.y() for point, _ in frames), 80)
-                for phase in ('takeoff', 'glide' if bird == 'eagle' else 'flap', 'land'):
+                for phase in ('takeoff', 'flap' if bird == 'hoots' else 'glide', 'land'):
                     self.assertTrue(any(mode and mode.startswith(f'trick-{phase}') for _, mode in frames))
                 self.assertEqual(frames[-1][0], origin)
                 p.advance_outing(route.started + route.duration + .01)
@@ -487,7 +549,7 @@ class PetTests(unittest.TestCase):
 
     def test_each_animal_has_visible_additional_poses(self):
         p = self.pet
-        for animal in ('cat', 'cat-classic', 'monkey', *(bird for bird in FLYERS if bird in PETS)):
+        for animal in ('cat', 'cat-classic', 'monkey', 'eagle', 'hoots'):
             p.select_pet(animal)
             self.assertTrue(EXTRA_ANIMATIONS[p.animal])
             for mode, _ in EXTRA_ANIMATIONS[p.animal]:
@@ -517,9 +579,7 @@ class PetTests(unittest.TestCase):
         p = self.pet
         self.assertFalse(p.autostart_path.exists())
         p.set_autostart(True)
-        desktop_entry = p.autostart_path.read_text()
-        self.assertIn(f'"{Path(__file__).with_name("pet.py")}"', desktop_entry)
-        self.assertIn('Name=Pixel Pet', desktop_entry)
+        self.assertIn('Projects/pixel-pet/launch.sh', p.autostart_path.read_text())
         p.set_autostart(False)
         self.assertFalse(p.autostart_path.exists())
 
@@ -715,6 +775,35 @@ class PetTests(unittest.TestCase):
         self.assertIsNone(p.effects.bubble)
         if after.rect().contains(current_position):
             self.assertEqual(after.pixelColor(current_position).alpha(), 0)
+
+    def test_moving_reactions_keep_one_surface_and_repaint_only_changed_area(self):
+        p = self.pet
+        p.select_pet('eagle')
+        screen = p.screen().availableGeometry()
+        p.move(screen.center() - QPoint(100, 100))
+        p.show()
+        effects = p.effects
+        effects.say('Moving with my pet')
+        self.app.processEvents()
+        surface = effects.winId()
+        self.assertEqual(effects.geometry(), screen)
+        with patch.object(effects, 'setGeometry', wraps=effects.setGeometry) as geometry, \
+                patch.object(effects, 'update', wraps=effects.update) as updates:
+            for _ in range(15):
+                previous = p.pos()
+                p.move(previous + QPoint(8, -4))
+                effects.leave_motion_marks(previous, p.pos() - previous, airborne=True)
+                effects.tick(.04)
+            self.assertEqual(geometry.call_count, 0)
+            self.assertEqual(updates.call_count, 15)
+            for call in updates.call_args_list:
+                region, = call.args
+                self.assertTrue(effects.rect().contains(region))
+                self.assertLess(region.width() * region.height(), screen.width() * screen.height())
+        effects.clear()
+        self.assertFalse(effects.isVisible())
+        effects.say('Same transparent window')
+        self.assertEqual(effects.winId(), surface)
 
     def test_bubble_themes_and_long_text_wrap(self):
         themes = [theme_for(pet, 'original') for pet in ('cat', 'cat-classic', 'monkey', 'eagle')]
